@@ -1,0 +1,14 @@
+name: Markdown Wiki
+slug: markdown_wiki
+description: Simple Markdown file viewer with sidebar navigation
+version: 0.1.0
+arch:
+  - amd64
+  - aarch64
+startup: services
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:file-document-multiple-outline
+map:
+  - share:rw
