@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="200" viewBox="0 0 500 200" role="img" aria-label="Markdown Wiki logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2f6feb" />
+      <stop offset="100%" stop-color="#1747a6" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="480" height="180" rx="32" fill="url(#bg)" />
+  <g transform="translate(48, 32) scale(5.25)" fill="#ffffff">
+    <path d="M16 0H8C6.9 0 6 .9 6 2V18C6 19.1 6.9 20 8 20H20C21.1 20 22 19.1 22 18V6L16 0M20 18H8V2H15V7H20V18M4 4V22H20V24H4C2.9 24 2 23.1 2 22V4H4M10 10V12H18V10H10M10 14V16H15V14H10Z" />
+  </g>
+  <g fill="#ffffff" font-family="Segoe UI, Arial, sans-serif">
+    <text x="190" y="86" font-size="40" font-weight="700">Markdown Wiki</text>
+    <text x="190" y="122" font-size="18" opacity="0.92">Read-only docs for Home Assistant</text>
+  </g>
+</svg>
