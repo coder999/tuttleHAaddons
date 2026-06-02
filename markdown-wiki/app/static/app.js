@@ -73,7 +73,55 @@ async function fetchFiles() {
   return response.json();
 }
 
-async function loadPage(filename, updateHash = false) {
+function scrollToAnchor(anchor) {
+  if (!anchor) {
+    return;
+  }
+
+  const target = contentEl.querySelector(`#${CSS.escape(anchor)}`);
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function parseInternalMarkdownLink(href) {
+  if (!href || href.startsWith("#")) {
+    return null;
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+    return null;
+  }
+
+  let candidate = href.trim();
+  if (candidate.startsWith("./")) {
+    candidate = candidate.slice(2);
+  }
+
+  if (candidate.startsWith("/")) {
+    return null;
+  }
+
+  const hashIndex = candidate.indexOf("#");
+  const pathPart = hashIndex >= 0 ? candidate.slice(0, hashIndex) : candidate;
+  const anchorPart = hashIndex >= 0 ? candidate.slice(hashIndex + 1) : "";
+  const filename = decodeURIComponent(pathPart);
+
+  if (!filename.toLowerCase().endsWith(".md")) {
+    return null;
+  }
+
+  if (filename.includes("/") || filename.includes("\\")) {
+    return null;
+  }
+
+  return {
+    filename,
+    anchor: anchorPart ? decodeURIComponent(anchorPart) : null,
+  };
+}
+
+async function loadPage(filename, updateHash = false, anchor = null) {
   if (!filename) {
     showMessage("No page selected.");
     return;
@@ -100,6 +148,7 @@ async function loadPage(filename, updateHash = false) {
 
     setActiveInSidebar(payload.filename);
     document.title = `${payload.title} - Markdown Wiki`;
+    scrollToAnchor(anchor);
   } catch (error) {
     showMessage(error.message || "Failed to load page", "error");
   }
@@ -151,6 +200,30 @@ window.addEventListener("hashchange", () => {
   if (hashFile && files.some((f) => f.filename === hashFile) && hashFile !== activeFilename) {
     loadPage(hashFile, false);
   }
+});
+
+contentEl.addEventListener("click", (event) => {
+  const link = event.target.closest("a[href]");
+  if (!link) {
+    return;
+  }
+
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+
+  const href = link.getAttribute("href");
+  const target = parseInternalMarkdownLink(href);
+  if (!target) {
+    return;
+  }
+
+  if (!files.some((file) => file.filename === target.filename)) {
+    return;
+  }
+
+  event.preventDefault();
+  loadPage(target.filename, true, target.anchor);
 });
 
 refreshAndLoadInitial();
