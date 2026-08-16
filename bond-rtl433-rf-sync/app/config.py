@@ -75,6 +75,12 @@ def parse_config(raw: dict) -> Config:
         RoomDevice(room=e["room"], bond_device_id=e["bond_device_id"], max_speed=int(e["max_speed"]))
         for e in raw["room_devices"]
     )
+    invalid_max_speed = [d.room for d in room_devices if d.max_speed < 1]
+    if invalid_max_speed:
+        raise ConfigError(
+            f"room_devices max_speed must be >= 1, got invalid entries for room(s): "
+            f"{sorted(invalid_max_speed)}"
+        )
 
     rooms_with_devices = {d.room for d in room_devices}
     rooms_in_code_table = {e.room for e in code_table}

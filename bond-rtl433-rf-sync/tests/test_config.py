@@ -69,6 +69,13 @@ def test_parse_config_orphaned_room_in_code_table():
         parse_config(raw)
 
 
+def test_parse_config_zero_max_speed_raises():
+    raw = _base_raw()
+    raw["room_devices"][0]["max_speed"] = 0
+    with pytest.raises(ConfigError, match="max_speed"):
+        parse_config(raw)
+
+
 def test_device_for_room_lookup():
     cfg = parse_config(_base_raw())
     device = cfg.device_for_room("livingroom")
