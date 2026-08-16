@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from pathlib import Path
 
 from app.bond_client import (
@@ -16,6 +17,7 @@ from app.event_log import EventLog
 from app.last_speed_store import LastSpeedStore
 from app.matcher import MatchedEvent, match_line
 from app.rf_source import RFSourceManager
+from app.web import create_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("bond-rtl433-rf-sync")
@@ -81,16 +83,9 @@ class Pipeline:
             self._event_log.record(event.room, event.button, event.percentage, body, f"error: {exc}")
 
 
-def run(config: Config) -> None:
-    bond_client = BondClient(config.bond_host, config.bond_token)
-    last_speed_store = LastSpeedStore(LAST_SPEED_PATH)
-    event_log = EventLog()
-    pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
-    debouncer = Debouncer(config.debounce_seconds, pipeline.handle_event)
-    rf_source = RFSourceManager(config)
-
+def run_pipeline(config: Config, rf_source: RFSourceManager, debouncer: Debouncer) -> None:
     log.info(
-        "bond-rtl433-rf-sync starting (source=%s, dry_run=%s)",
+        "bond-rtl433-rf-sync pipeline starting (source=%s, dry_run=%s)",
         config.rtl433_source,
         config.dry_run,
     )
@@ -104,7 +99,20 @@ def run(config: Config) -> None:
 
 def main() -> int:
     config = load_config(OPTIONS_PATH)
-    run(config)
+    bond_client = BondClient(config.bond_host, config.bond_token)
+    last_speed_store = LastSpeedStore(LAST_SPEED_PATH)
+    event_log = EventLog()
+    pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
+    debouncer = Debouncer(config.debounce_seconds, pipeline.handle_event)
+    rf_source = RFSourceManager(config)
+
+    pipeline_thread = threading.Thread(
+        target=run_pipeline, args=(config, rf_source, debouncer), daemon=True
+    )
+    pipeline_thread.start()
+
+    app = create_app(event_log)
+    app.run(host="0.0.0.0", port=8100)
     return 0
 
 
