@@ -1,3 +1,5 @@
+import subprocess
+
 from app.config import parse_config
 from app.rf_source import RFSourceManager, build_source_args, rtl433_command
 
@@ -70,3 +72,31 @@ def test_lines_restarts_process_after_it_exits():
             manager.stop()
             break
     assert lines == ["tick", "tick", "tick"]
+
+
+def test_lines_retries_after_popen_raises_on_spawn(monkeypatch):
+    manager = RFSourceManager(
+        _config(),
+        restart_backoff_seconds=0.01,
+        command=["python3", "-c", "print('ok')"],
+    )
+
+    real_popen = subprocess.Popen
+    calls = {"count": 0}
+
+    def flaky_popen(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise FileNotFoundError("rtl_433: command not found")
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", flaky_popen)
+
+    lines = []
+    for line in manager.lines():
+        lines.append(line)
+        manager.stop()
+        break
+
+    assert lines == ["ok"]
+    assert calls["count"] == 2

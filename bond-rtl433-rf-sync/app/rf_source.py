@@ -53,13 +53,22 @@ class RFSourceManager:
 
     def lines(self) -> Iterator[str]:
         while not self._stopped:
-            proc = subprocess.Popen(
-                self._command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
+            try:
+                proc = subprocess.Popen(
+                    self._command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+            except OSError as exc:
+                print(
+                    f"failed to start rtl_433 ({exc}), retrying in "
+                    f"{self._restart_backoff_seconds}s",
+                    flush=True,
+                )
+                time.sleep(self._restart_backoff_seconds)
+                continue
             with self._lock:
                 self._proc = proc
             assert proc.stdout is not None
