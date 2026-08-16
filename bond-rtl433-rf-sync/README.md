@@ -36,5 +36,7 @@ Bond corrections with zero errors and zero double-RF responses. This
 add-on is now the sole thing correcting Bond's believed fan/light state
 from wall-switch RF presses — the original MQTT + Home-Assistant-automation
 pipeline (see the sibling `rtl_433_fan` project's `FAN_WALLSWITCH_SYNC.md`)
-has been retired. See the project's implementation plan and design spec in
-`docs/superpowers/` for the full build/validation history.
+has been retired, including the automations, `input_number` helpers, and
+their entity registry entries. See `CHANGELOG.md` for the version history,
+or this repo's git history (tag `bond-rtl433-rf-sync-1.0.0`) for the full
+design/implementation/validation record.

@@ -7,6 +7,7 @@ These add-ons are intended for users who want to install third-party Home Assist
 ## Add-ons
 
 - [Markdown Wiki](markdown-wiki/README.md) - Simple Markdown file viewer with sidebar navigation
+- [Bond-rtl_433 RF Sync](bond-rtl433-rf-sync/README.md) - Corrects Bond Bridge's believed fan/light state from wall-switch RF presses, without transmitting anything
 
 ## Installing This Repository in Home Assistant
 
