@@ -42,8 +42,8 @@ class Pipeline:
         self._event_log = event_log
 
     def handle_event(self, event: MatchedEvent) -> None:
-        device = self._config.device_for_room(event.room)
         try:
+            device = self._config.device_for_room(event.room)
             if event.button == "speed":
                 assert event.percentage is not None
                 body = build_speed_event_body(event, device)

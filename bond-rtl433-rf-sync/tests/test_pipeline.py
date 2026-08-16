@@ -1,7 +1,7 @@
 import requests
 
 from app.bond_client import BondClient
-from app.config import parse_config
+from app.config import CodeTableEntry, Config, parse_config
 from app.event_log import EventLog
 from app.last_speed_store import LastSpeedStore
 from app.matcher import MatchedEvent
@@ -126,3 +126,36 @@ def test_bond_patch_failure_is_logged_not_raised(tmp_path):
     pipeline, event_log, _ = _pipeline(tmp_path, session)
     pipeline.handle_event(MatchedEvent(room="livingroom", button="speed", percentage=66))
     assert event_log.recent_events()[0].result.startswith("error:")
+
+
+def test_unknown_room_device_lookup_failure_is_logged_not_raised(tmp_path):
+    # Config-drift scenario: a code_table entry references a room with no
+    # matching room_devices entry. parse_config() rejects this at load time,
+    # but nothing stops it happening at runtime (e.g. options.json edited by
+    # hand, or a future config loader that's more permissive) - construct a
+    # Config directly, bypassing parse_config's validation, to reach the
+    # device_for_room() lookup that runs inside handle_event().
+    session = FakeSession()
+    config = Config(
+        bond_host="192.168.0.110",
+        bond_token="tok123",
+        rtl433_source="local",
+        rtl433_source_host="",
+        rtl433_source_port=1234,
+        rtl433_frequency=304250000,
+        rtl433_sample_rate=2048000,
+        rtl433_gain=49.6,
+        debounce_seconds=3.0,
+        dry_run=False,
+        code_table=(CodeTableEntry(room="diningroom", button="power", stable_id=0x1D9),),
+        room_devices=(),  # no entry for "diningroom" - device_for_room() will raise
+    )
+    bond_client = BondClient(config.bond_host, config.bond_token, session=session)
+    last_speed_store = LastSpeedStore(tmp_path / "last_speed.json")
+    event_log = EventLog()
+    pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
+
+    pipeline.handle_event(MatchedEvent(room="diningroom", button="power", percentage=None))
+
+    assert event_log.recent_events()[0].result.startswith("error:")
+    assert all(call[0] not in ("GET", "PATCH") for call in session.calls)
