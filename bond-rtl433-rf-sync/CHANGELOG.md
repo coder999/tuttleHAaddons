@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0
+
+- Live-validated against all 9 real wall-switch button combinations (3
+  rooms × power/light/speed), zero errors, zero double-RF responses.
+  Cut over from the previous MQTT + Home-Assistant-automation pipeline
+  (see `rtl_433_fan`'s `FAN_WALLSWITCH_SYNC.md`) — this add-on is now the
+  sole thing correcting Bond's believed fan/light state from wall-switch
+  RF presses.
+
 ## 0.2.1
 
 - Fixed Docker packaging: the built image flattened `app/`'s contents

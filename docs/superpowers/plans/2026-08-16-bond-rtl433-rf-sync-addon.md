@@ -2295,19 +2295,19 @@ restored cleanly afterward; add-on left in a harmless degraded-retry state
 
 **Get explicit user confirmation before Step 1.**
 
-- [ ] **Step 1: Repeat Task 13's dongle-borrowing setup**
+- [x] **Step 1: Repeat Task 13's dongle-borrowing setup**
 
 ```bash
 ssh raspberrypi 'sudo systemctl stop rtl433-mqtt.service'
 ssh raspberrypi 'sudo systemd-run --unit=temp-rtl-tcp --collect rtl_tcp -a 0.0.0.0 -p 1234'
 ```
 
-- [ ] **Step 2: Flip dry_run off**
+- [x] **Step 2: Flip dry_run off**
 
 On the add-on's Configuration tab, set `dry_run: false`. Save, start (or
 restart) the add-on.
 
-- [ ] **Step 3: One button at a time, all 9 combinations, with the user watching the physical device**
+- [x] **Step 3: One button at a time, all 9 combinations, with the user watching the physical device**
 
 Same procedure as Task 13 Step 4, but this time each event makes a real
 `PATCH` call. For each button: press it, confirm in the Log tab that
@@ -2318,7 +2318,7 @@ now matches physical reality, and **confirm the physical device did not
 additionally respond** (no double RF) — the same verification the original
 HA-automation system was validated with earlier today.
 
-- [ ] **Step 4: Restore the Pi's safety net**
+- [x] **Step 4: Restore the Pi's safety net**
 
 ```bash
 ssh raspberrypi 'sudo systemctl stop temp-rtl-tcp'
@@ -2326,6 +2326,15 @@ ssh raspberrypi 'sudo systemctl start rtl433-mqtt.service'
 ```
 
 Do not proceed to Task 15 until all 9 combinations are confirmed clean.
+
+**Completed 2026-08-16.** All 9 combinations produced exactly one
+`corrected <room>/<button> -> <body>` line each, confirmed against Bond's
+real belief via live `GET .../state` calls, with the user watching each
+physical device and confirming no extra response beyond their own press.
+Zero errors, zero double-RF responses. Old HA-automation system was still
+running in parallel throughout (untouched, per Global Constraints), as the
+Pi's dongle was only temporarily borrowed for this test window and restored
+immediately after.
 
 ---
 
@@ -2349,14 +2358,14 @@ Do not proceed to Task 15 until all 9 combinations are confirmed clean.
 **Get explicit user confirmation before every step below — this is the
 most consequential task in the plan.**
 
-- [ ] **Step 1: Disable the 9 old HA automations via the UI**
+- [x] **Step 1: Disable the 9 old HA automations via the UI**
 
 Settings → Automations & Scenes → for each of the 9 "Fan wall switch -
 livingroom/diningroom/bedroom power+light/light/speed" automations, use the
 toggle to disable it (not delete — keeps history, easy to re-enable if
 needed).
 
-- [ ] **Step 2: Point rtl-tcp.service at all interfaces and make it the permanent source**
+- [x] **Step 2: Point rtl-tcp.service at all interfaces and make it the permanent source**
 
 ```bash
 ssh raspberrypi 'sudo sed -i "s/-a 127.0.0.1/-a 0.0.0.0/" /etc/systemd/system/rtl-tcp.service'
@@ -2370,7 +2379,7 @@ gas-meter's `rtlamr-mqtt.service` still can't both be actively connected to
 it at once — that's an unchanged pre-existing limitation, not something
 this step fixes.
 
-- [ ] **Step 3: Point the add-on at the now-permanent source and confirm it boots clean**
+- [x] **Step 3: Point the add-on at the now-permanent source and confirm it boots clean**
 
 On the add-on's Configuration tab: `rtl433_source_host` set to the Pi's IP,
 `dry_run: false`. Set `boot: auto` behavior is already the add-on's default
@@ -2378,12 +2387,12 @@ from `config.yaml` (Task 1) — confirm in the add-on's Info tab that
 "Start on boot" is enabled. Restart the add-on, confirm the Log tab shows a
 clean startup with no `restarting` errors.
 
-- [ ] **Step 4: One more live press per room, confirm the add-on (now the only active corrector) still works end to end**
+- [x] **Step 4: One more live press per room, confirm the add-on (now the only active corrector) still works end to end**
 
 Press one button in each room, confirm `corrected <room>/<button> -> ...`
 in the log and a matching physical/believed-state check, same as Task 14.
 
-- [ ] **Step 5: Update FAN_WALLSWITCH_SYNC.md with the cutover**
+- [x] **Step 5: Update FAN_WALLSWITCH_SYNC.md with the cutover**
 
 Add a dated entry to `rtl_433_fan/FAN_WALLSWITCH_SYNC.md` documenting: the
 9 HA automations are now disabled (not deleted), `fan_wallswitch_bridge.py`
@@ -2399,7 +2408,7 @@ git commit -m "Document cutover to bond-rtl433-rf-sync add-on"
 git push
 ```
 
-- [ ] **Step 6: Bump the add-on's version and tag the tuttleHAaddons repo**
+- [x] **Step 6: Bump the add-on's version and tag the tuttleHAaddons repo**
 
 ```bash
 cd /home/mark/projects/tuttleHAaddons
