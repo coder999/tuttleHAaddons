@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed Docker packaging: the built image flattened `app/`'s contents
+  directly into `/app/`, breaking the codebase's `from app.X import ...`
+  absolute imports (`ModuleNotFoundError: No module named 'app'` at
+  startup). `app/` is now copied to `/app/app/` and run as a proper module
+  (`python3 -m app.main`), matching the package layout the code expects.
+
 ## 0.2.0
 
 - Decodes Ashby Park ceiling fan wall-switch RF presses (speed/power/light)
