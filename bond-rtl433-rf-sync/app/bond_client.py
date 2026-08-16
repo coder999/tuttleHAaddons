@@ -60,11 +60,23 @@ def build_speed_event_body(event: MatchedEvent, device: RoomDevice) -> dict:
 def build_power_toggle_body(
     currently_on: bool, last_speed_percentage: int, device: RoomDevice
 ) -> dict:
-    """Body for a 'power' button event: toggles off if currently on,
-    otherwise turns on to the last known non-zero speed."""
+    """Body for a 'power' button event: toggles the fan off if currently
+    on, otherwise turns it on to the last known non-zero speed. The light
+    unconditionally follows the fan's *new* resulting state, not light's
+    own prior state - confirmed live 2026-08-16 that the physical wall
+    switch's power button is a master toggle for the whole fixture, driven
+    entirely by the fan's own on/off memory: fan-on/light-off -> both off,
+    fan-off/light-on -> both on. It is NOT two independent per-entity
+    toggles (that was the bug: the original design toggled light based on
+    light's own prior state, which is wrong for exactly these two mixed
+    cases)."""
     if currently_on:
-        return {"power": 0}
-    return {"power": 1, "speed": native_speed_step(last_speed_percentage, device.max_speed)}
+        return {"power": 0, "light": 0}
+    return {
+        "power": 1,
+        "speed": native_speed_step(last_speed_percentage, device.max_speed),
+        "light": 1,
+    }
 
 
 def build_light_toggle_body(currently_on: bool) -> dict:

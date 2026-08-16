@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1
+
+- **Fixed a real correctness bug in the power button's light handling.**
+  The power button is a master toggle for the whole fixture, driven by
+  the fan's own on/off state — pressing it turns everything on (fan to
+  last speed, light on) unless both are already on, in which case it
+  turns everything off. Light's own prior state never matters. The
+  previous logic independently toggled light based on light's own prior
+  state, which was wrong for the two mixed cases (fan on/light off, and
+  fan off/light on) — confirmed against real wall-switch behavior
+  2026-08-16.
+
 ## 1.0.0
 
 - Live-validated against all 9 real wall-switch button combinations (3

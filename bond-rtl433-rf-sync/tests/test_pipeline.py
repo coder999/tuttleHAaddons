@@ -84,7 +84,14 @@ def test_speed_event_zero_does_not_update_last_speed(tmp_path):
     assert last_speed.get("livingroom") == 66  # unchanged
 
 
-def test_power_event_currently_on_turns_off(tmp_path):
+def test_power_event_currently_on_turns_off_light_too(tmp_path):
+    # Regression test for real wall-switch behavior confirmed live
+    # 2026-08-16: the power button is a master toggle for the whole
+    # fixture, driven by the fan's own state - light unconditionally
+    # follows the fan's *new* state, NOT light's own prior state. This
+    # fixture is deliberately a mixed state (fan on, light off) - the
+    # old (buggy) independent-toggle logic would have turned light ON
+    # here (toggling from its own off state), not off.
     session = FakeSession(get_response=FakeResponse(json_data={"power": 1, "speed": 3, "light": 0}))
     pipeline, event_log, _ = _pipeline(tmp_path, session)
     pipeline.handle_event(MatchedEvent(room="livingroom", button="power", percentage=None))
@@ -93,16 +100,19 @@ def test_power_event_currently_on_turns_off(tmp_path):
         "PATCH",
         "http://192.168.0.110/v2/devices/ce4d90389da6937f/state",
         {"BOND-Token": "tok123", "Content-Type": "application/json"},
-        {"power": 0},
+        {"power": 0, "light": 0},
     )
 
 
-def test_power_event_currently_off_resumes_last_speed(tmp_path):
-    session = FakeSession(get_response=FakeResponse(json_data={"power": 0, "speed": 1, "light": 0}))
+def test_power_event_currently_off_resumes_last_speed_and_turns_light_on(tmp_path):
+    # Regression test, other mixed state (fan off, light on): old
+    # independent-toggle logic would have turned light OFF here
+    # (toggling from its own on state), not left it on.
+    session = FakeSession(get_response=FakeResponse(json_data={"power": 0, "speed": 1, "light": 1}))
     pipeline, event_log, last_speed = _pipeline(tmp_path, session)
     last_speed.set("livingroom", 66)
     pipeline.handle_event(MatchedEvent(room="livingroom", button="power", percentage=None))
-    assert session.calls[-1][3] == {"power": 1, "speed": 2}
+    assert session.calls[-1][3] == {"power": 1, "speed": 2, "light": 1}
 
 
 def test_light_event_toggles_from_current_state(tmp_path):

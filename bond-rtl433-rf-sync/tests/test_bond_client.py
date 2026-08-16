@@ -58,13 +58,18 @@ def test_build_speed_event_body_nonzero_sets_power_and_speed():
 
 
 def test_build_power_toggle_body_currently_on_turns_off():
+    # Real wall-switch behavior confirmed live 2026-08-16: the power button
+    # is a master toggle for the whole fixture, driven by the fan's own
+    # state - light unconditionally follows the fan's *new* state, not
+    # light's own prior state (fan on/light off -> both off; fan off/light
+    # on -> both on). See build_power_toggle_body's docstring.
     body = build_power_toggle_body(currently_on=True, last_speed_percentage=66, device=LIVINGROOM)
-    assert body == {"power": 0}
+    assert body == {"power": 0, "light": 0}
 
 
 def test_build_power_toggle_body_currently_off_resumes_last_speed():
     body = build_power_toggle_body(currently_on=False, last_speed_percentage=66, device=LIVINGROOM)
-    assert body == {"power": 1, "speed": 2}
+    assert body == {"power": 1, "speed": 2, "light": 1}
 
 
 def test_build_light_toggle_body_on_to_off():
