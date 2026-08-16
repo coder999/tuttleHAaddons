@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+  <title>Bond-rtl_433 RF Sync</title>
+  <meta http-equiv="refresh" content="5">
+  <style>
+    body { font-family: sans-serif; margin: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
+    th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }
+    th { background: #f0f0f0; }
+    .ok { color: #1a7f37; }
+    .dry_run { color: #9a6700; }
+    .error { color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Bond-rtl_433 RF Sync</h1>
+
+  <h2>Current believed state</h2>
+  <table>
+    <tr><th>Room</th><th>State</th></tr>
+    {% for room, s in state.items() %}
+    <tr><td>{{ room }}</td><td>{{ s }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Recent events</h2>
+  <table>
+    <tr><th>Time</th><th>Room</th><th>Button</th><th>Percentage</th><th>Body</th><th>Result</th></tr>
+    {% for e in events %}
+    <tr>
+      <td>{{ e.timestamp }}</td>
+      <td>{{ e.room }}</td>
+      <td>{{ e.button }}</td>
+      <td>{{ e.percentage }}</td>
+      <td>{{ e.body }}</td>
+      <td class="{{ e.result.split(':')[0] }}">{{ e.result }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>
