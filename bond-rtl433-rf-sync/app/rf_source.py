@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 import time
 from collections.abc import Iterator
 
@@ -41,9 +42,14 @@ class RFSourceManager:
         self._restart_backoff_seconds = restart_backoff_seconds
         self._command = command or rtl433_command(config)
         self._stopped = False
+        self._proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
 
     def stop(self) -> None:
         self._stopped = True
+        with self._lock:
+            if self._proc is not None:
+                self._proc.terminate()
 
     def lines(self) -> Iterator[str]:
         while not self._stopped:
@@ -54,15 +60,20 @@ class RFSourceManager:
                 text=True,
                 bufsize=1,
             )
+            with self._lock:
+                self._proc = proc
             assert proc.stdout is not None
             try:
                 for line in proc.stdout:
                     yield line.rstrip()
                     if self._stopped:
-                        proc.terminate()
                         return
             finally:
+                proc.terminate()
                 proc.wait()
+                proc.stdout.close()
+                with self._lock:
+                    self._proc = None
             if self._stopped:
                 return
             print(
