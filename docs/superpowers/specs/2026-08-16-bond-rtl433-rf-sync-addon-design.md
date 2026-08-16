@@ -1,4 +1,4 @@
-# Bond Wall-Switch Sync Add-on — Design
+# Bond-rtl_433 RF Sync Add-on — Design
 
 **Status:** approved by user 2026-08-16, ready for implementation planning.
 
@@ -169,8 +169,9 @@ this project so far.
   flag, but exact container permissions for RTL-SDR (a generic USB device, not serial)
   should be validated against a real local dongle during implementation — some
   community add-ons additionally need explicit `udev: true` or device cgroup mappings.
-- **Add-on name/slug:** working name "Bond Wall-Switch Sync" — easy to change, not
-  load-bearing on any of the above.
+- **Add-on name/slug:** "Bond-rtl_433 RF Sync" (display name), proposed slug
+  `bond_rtl433_rf_sync`, folder `bond-rtl433-rf-sync` (matching `markdown-wiki`'s
+  kebab-case-folder/snake_case-slug convention).
 - **`code_table` schema depth:** HA add-on option schemas support nested lists, but
   the exact nesting (list-of-objects with an optional field for `target_percent`)
   should be validated against Supervisor's schema DSL early, since its expressiveness
