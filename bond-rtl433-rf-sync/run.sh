@@ -1,4 +1,5 @@
 #!/bin/sh
 set -eu
 
-exec python3 /app/main.py
+cd /app
+exec python3 -m app.main
