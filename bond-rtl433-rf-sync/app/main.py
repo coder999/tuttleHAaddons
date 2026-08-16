@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import signal
 import sys
 import threading
 from pathlib import Path
@@ -97,6 +98,21 @@ def run_pipeline(config: Config, rf_source: RFSourceManager, debouncer: Debounce
         debouncer.see(event)
 
 
+def _install_shutdown_handler(rf_source: RFSourceManager) -> None:
+    """Ensures rf_source.stop() (which terminates the rtl_433 child process)
+    runs on SIGTERM (docker stop / Supervisor restart) or SIGINT (Ctrl-C
+    during manual/local testing), so the SDR dongle isn't left held by an
+    orphaned rtl_433 process across restarts."""
+
+    def _handle_shutdown(signum, frame):
+        log.info("received signal %s, shutting down", signum)
+        rf_source.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+    signal.signal(signal.SIGINT, _handle_shutdown)
+
+
 def main() -> int:
     config = load_config(OPTIONS_PATH)
     bond_client = BondClient(config.bond_host, config.bond_token)
@@ -105,6 +121,7 @@ def main() -> int:
     pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
     debouncer = Debouncer(config.debounce_seconds, pipeline.handle_event)
     rf_source = RFSourceManager(config)
+    _install_shutdown_handler(rf_source)
 
     pipeline_thread = threading.Thread(
         target=run_pipeline, args=(config, rf_source, debouncer), daemon=True
