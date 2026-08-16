@@ -35,7 +35,16 @@ class Debouncer:
             timer.start()
 
     def _fire(self, key: tuple[str, str, int | None], event: MatchedEvent) -> None:
+        # threading.Timer.cancel() is best-effort: if see() calls cancel()
+        # after this timer's thread has already passed its internal
+        # "not cancelled" check, this _fire still runs. Guard by identity
+        # (not just key) so a stale, superseded timer doesn't pop the
+        # newer timer's dict entry out from under it or double-fire —
+        # if we're no longer the timer on file for this key, a newer
+        # timer has replaced us and will fire the correct final event.
         with self._lock:
+            if self._timers.get(key) is not threading.current_thread():
+                return
             self._timers.pop(key, None)
         self._on_fire(event)
 
