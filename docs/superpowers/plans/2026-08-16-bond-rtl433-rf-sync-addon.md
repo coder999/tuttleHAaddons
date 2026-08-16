@@ -2139,6 +2139,26 @@ the container, config, and ingress panel work end to end. Periodic
 "rtl_433 exited, restarting" log lines during this task are **expected**,
 not a bug — real RF source validation is Task 13.
 
+**Completed 2026-08-16. Found and fixed a real deployment bug this task
+exists to catch:** the built Docker image flattened `app/`'s contents
+directly into `/app/`, but the codebase's absolute imports
+(`from app.bond_client import ...`) require `app` to be an importable
+package — `ModuleNotFoundError: No module named 'app'` on every boot.
+None of the 60 unit tests exercise the actual built container's import
+resolution (they run via local `pytest` with `pythonpath = .`), so this
+was invisible until real deployment. Fixed by copying `app/` to `/app/app/`
+and running via `python3 -m app.main` instead of `python3 /app/main.py`
+(commit `febee09`), verified locally with a real `docker build`+`docker run`
+before pushing. **Operational gotcha also discovered:** Supervisor compares
+`config.yaml`'s `version:` field to decide whether to re-fetch/rebuild from
+git — a fix commit alone doesn't trigger a rebuild without a version bump
+(bumped to 0.2.1, commit `f9fe5b3`), and `ha store reload` (not
+`ha store update`) is the correct command to refresh a custom repo's
+metadata before Supervisor will see a new version at all. After the fix:
+add-on boots clean, `/healthz` returns 200, ingress panel renders
+correctly, `rtl_433` retries gracefully with backoff when no source is
+available (exactly the expected degraded state for this task).
+
 **Scope note:** Tasks 13–15 all validate the `rtl_tcp` (remote Pi) path,
 matching your actual setup — `usb: true`/local-USB mode is code-complete
 and unit-testable (Task 8's `build_source_args` tests cover its argument
@@ -2147,14 +2167,14 @@ dongle** in this plan, since there isn't a spare one to attach to this HA
 host. Worth a real test before this add-on goes into the public repo for
 others whose primary use case is local-only.
 
-- [ ] **Step 1: Push all work so far**
+- [x] **Step 1: Push all work so far**
 
 ```bash
 cd /home/mark/projects/tuttleHAaddons
 git push
 ```
 
-- [ ] **Step 2: Confirm the repository is visible to Supervisor and install the add-on**
+- [x] **Step 2: Confirm the repository is visible to Supervisor and install the add-on**
 
 In Home Assistant: Settings → Add-ons → Add-on Store → ⋮ (top right) →
 Check for updates (the `tuttleHAaddons` repository is already added, since
@@ -2163,7 +2183,7 @@ store, click it, click **Install**. Expected: install completes without
 error (the Docker build succeeds, including the `apt-get install rtl-433`
 step).
 
-- [ ] **Step 3: Configure minimally and start it**
+- [x] **Step 3: Configure minimally and start it**
 
 On the add-on's **Configuration** tab, set:
 - `bond_host`: `192.168.0.110`
@@ -2173,20 +2193,20 @@ On the add-on's **Configuration** tab, set:
 Leave `rtl433_source`, `code_table`, and `room_devices` at their defaults.
 Save, then start the add-on.
 
-- [ ] **Step 4: Check the Log tab**
+- [x] **Step 4: Check the Log tab**
 
 Expected: a line like
 `bond-rtl433-rf-sync pipeline starting (source=local, dry_run=True)`,
 followed by periodic `rtl_433 exited (code=...), restarting in 5.0s` lines
 (expected, no dongle attached here yet).
 
-- [ ] **Step 5: Check the ingress panel**
+- [x] **Step 5: Check the ingress panel**
 
 Settings → Add-ons → Bond-rtl_433 RF Sync → **Open Web UI**. Expected: the
 page loads, shows "Current believed state" and "Recent events" headers,
 both empty (no real event has fired yet).
 
-- [ ] **Step 6: Stop the add-on**
+- [x] **Step 6: Stop the add-on**
 
 It doesn't need to keep running yet — real RF testing happens in Task 13,
 which needs the Pi's dongle temporarily freed up first. Stop it from the
@@ -2207,7 +2227,7 @@ harmless either way since dry-run never calls Bond).
 **Get explicit user confirmation before Step 1** — this task temporarily
 stops the Pi's safety-net service.
 
-- [ ] **Step 1: Stop the Pi's fan bridge and start a temporary rtl_tcp**
+- [x] **Step 1: Stop the Pi's fan bridge and start a temporary rtl_tcp**
 
 ```bash
 ssh raspberrypi 'sudo systemctl stop rtl433-mqtt.service'
@@ -2216,19 +2236,19 @@ ssh raspberrypi 'systemctl is-active temp-rtl-tcp'
 ```
 Expected: `active`.
 
-- [ ] **Step 2: Point the add-on at it**
+- [x] **Step 2: Point the add-on at it**
 
 On the add-on's Configuration tab: `rtl433_source: rtl_tcp`,
 `rtl433_source_host: <the Pi's IP>`, `rtl433_source_port: 1234`,
 `dry_run: true` (unchanged). Save, start the add-on.
 
-- [ ] **Step 3: Confirm connection in the Log tab**
+- [x] **Step 3: Confirm connection in the Log tab**
 
 Expected: `bond-rtl433-rf-sync pipeline starting (source=rtl_tcp, ...)`
 with no further `restarting` errors — the add-on is now successfully
 reading from the Pi's dongle over the network.
 
-- [ ] **Step 4: One button at a time, all 9 combinations**
+- [x] **Step 4: One button at a time, all 9 combinations**
 
 For each of {livingroom, diningroom, bedroom} × {power, light, speed}:
 press the real physical wall-switch button once, then check the Log tab
@@ -2239,7 +2259,7 @@ matches what's expected for that button (e.g. bedroom speed landing on
 consistent with the room's actual current physical state). Also confirm
 the ingress panel's "Recent events" table shows the same entries.
 
-- [ ] **Step 5: Restore the Pi's safety net**
+- [x] **Step 5: Restore the Pi's safety net**
 
 ```bash
 ssh raspberrypi 'sudo systemctl stop temp-rtl-tcp'
@@ -2248,6 +2268,18 @@ ssh raspberrypi 'systemctl is-active rtl433-mqtt.service'
 ```
 Expected: `active`. Stop the add-on (or leave `dry_run: true` running,
 harmless either way) until Task 14.
+
+**Completed 2026-08-16.** All 9 button combinations (3 rooms × power/light/
+speed) decoded correctly and produced the expected `[dry-run] would PATCH`
+body, each cross-checked against Bond's real current belief via a live
+`GET .../state` at the time of the press — every toggle direction and every
+speed-to-native-step conversion matched. Zero mismatches, zero decode
+errors. Confirmed via the `received signal 15, shutting down` log line
+during an unrelated restart that the final-review SIGTERM fix also works
+correctly in production, not just in its unit test. Pi's safety net
+restored cleanly afterward; add-on left in a harmless degraded-retry state
+(its `rtl433_source` still points at the Pi's now-stopped temporary
+`rtl_tcp`) until Task 14 resumes.
 
 ---
 

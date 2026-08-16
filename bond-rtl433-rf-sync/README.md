@@ -30,5 +30,11 @@ single self-contained add-on.
 
 ## Status
 
-Under active development — see the project's implementation plan and design
-spec in `docs/superpowers/`.
+Deployed and dry-run validated (2026-08-16): all 9 wall-switch button
+combinations (3 rooms × power/light/speed) decode correctly and produce
+the expected Bond correction, verified against Bond's real state with
+`dry_run: true` (no Bond calls actually sent). Not yet live — the original
+MQTT + Home-Assistant-automation pipeline (see the sibling `rtl_433_fan`
+project's `FAN_WALLSWITCH_SYNC.md`) is still the active safety net until
+live validation (`dry_run: false`) and cutover are complete. See the
+project's implementation plan and design spec in `docs/superpowers/`.
