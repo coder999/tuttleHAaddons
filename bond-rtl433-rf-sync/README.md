@@ -28,15 +28,32 @@ single self-contained add-on.
 - `dry_run` — when true, logs the Bond call that would be made without
   sending it.
 
+## Power button behavior
+
+The physical power button is **not** an independent per-entity toggle of
+fan and light. It's a master toggle for the whole fixture, driven entirely
+by the fan's own on/off state:
+
+- If the fan and light are **both already on**, pressing power turns
+  **both off**.
+- Otherwise (fan off, regardless of light's state), pressing power turns
+  **both on** — fan resumes its last known non-zero speed, light turns on.
+
+Light's own prior state never matters — it always ends up matching the
+fan's *new* resulting state. This was confirmed against real hardware
+(both mixed cases: fan-on/light-off and fan-off/light-on) and is what
+`build_power_toggle_body` in `app/bond_client.py` implements.
+
 ## Status
 
-**Live and in production (2026-08-16).** All 9 wall-switch button
+**Live and in production (2026-08-16, v1.0.1).** All 9 wall-switch button
 combinations (3 rooms × power/light/speed) validated live against real
-Bond corrections with zero errors and zero double-RF responses. This
-add-on is now the sole thing correcting Bond's believed fan/light state
-from wall-switch RF presses — the original MQTT + Home-Assistant-automation
-pipeline (see the sibling `rtl_433_fan` project's `FAN_WALLSWITCH_SYNC.md`)
-has been retired, including the automations, `input_number` helpers, and
-their entity registry entries. See `CHANGELOG.md` for the version history,
-or this repo's git history (tag `bond-rtl433-rf-sync-1.0.0`) for the full
+Bond corrections with zero errors and zero double-RF responses, including
+both mixed power-button states described above. This add-on is now the
+sole thing correcting Bond's believed fan/light state from wall-switch RF
+presses — the original MQTT + Home-Assistant-automation pipeline (see the
+sibling `rtl_433_fan` project's `FAN_WALLSWITCH_SYNC.md`) has been
+retired, including the automations, `input_number` helpers, and their
+entity registry entries. See `CHANGELOG.md` for the version history, or
+this repo's git tags (`bond-rtl433-rf-sync-1.0.0`, `-1.0.1`) for the full
 design/implementation/validation record.
