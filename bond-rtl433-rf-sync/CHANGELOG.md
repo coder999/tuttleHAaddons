@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2
+
+- Added a custom add-on icon (`icon.svg`/`icon.png`) — a fan pinwheel with
+  RF signal arcs sweeping toward it — replacing the default blank icon in
+  the Add-on Store. Sidebar `panel_icon` changed from `mdi:fan-alert` to
+  `mdi:radio-tower`, since this add-on doesn't touch the fan directly and
+  `radio-tower` better reflects what it actually does (listens to RF).
+
 ## 1.0.1
 
 - **Fixed a real correctness bug in the power button's light handling.**

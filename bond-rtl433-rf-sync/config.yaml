@@ -1,7 +1,7 @@
 name: Bond-rtl_433 RF Sync
 slug: bond_rtl433_rf_sync
 description: Corrects Bond Bridge's believed fan/light state from wall-switch RF presses, without transmitting anything
-version: "1.0.1"
+version: "1.0.2"
 arch:
   - amd64
   - aarch64
@@ -80,4 +80,4 @@ schema:
       max_speed: int
 ingress: true
 ingress_port: 8100
-panel_icon: mdi:fan-alert
+panel_icon: mdi:radio-tower
