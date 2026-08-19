@@ -1,4 +1,6 @@
 import subprocess
+import threading
+import time
 
 from app.config import parse_config
 from app.rf_source import RFSourceManager, build_source_args, rtl433_command
@@ -95,6 +97,34 @@ def test_lines_restarts_process_after_prolonged_silence():
     # First "line1" from the original (now-hung) process; staleness watchdog
     # kills and restarts it, and the fresh process prints "line1" again.
     assert lines == ["line1", "line1"]
+
+
+def test_lines_stop_returns_promptly_during_long_stale_wait():
+    """The property the staleness watchdog most depends on for safety:
+    stop() must interrupt an in-progress stale-timeout wait immediately,
+    not block until the (potentially very long, e.g. the 1-hour default)
+    timeout elapses. Uses a deliberately long stale_timeout_seconds and
+    asserts stop() (called from another thread, as it is in production via
+    the SIGTERM handler) returns almost immediately, not anywhere near it."""
+    manager = RFSourceManager(
+        _config(),
+        restart_backoff_seconds=0.01,
+        stale_timeout_seconds=30.0,
+        command=["python3", "-c", "print('line1', flush=True); import time; time.sleep(60)"],
+    )
+
+    def stop_soon():
+        time.sleep(0.2)
+        manager.stop()
+
+    threading.Thread(target=stop_soon, daemon=True).start()
+
+    start = time.monotonic()
+    lines = list(manager.lines())
+    elapsed = time.monotonic() - start
+
+    assert lines == ["line1"]
+    assert elapsed < 5.0  # nowhere near the 30s stale timeout
 
 
 def test_lines_retries_after_popen_raises_on_spawn(monkeypatch):

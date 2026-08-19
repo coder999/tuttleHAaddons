@@ -88,6 +88,20 @@ def test_parse_config_rtl433_stale_timeout_seconds_override():
     assert cfg.rtl433_stale_timeout_seconds == 300.0
 
 
+def test_parse_config_zero_stale_timeout_raises():
+    raw = _base_raw()
+    raw["rtl433_stale_timeout_seconds"] = 0
+    with pytest.raises(ConfigError, match="rtl433_stale_timeout_seconds"):
+        parse_config(raw)
+
+
+def test_parse_config_negative_stale_timeout_raises():
+    raw = _base_raw()
+    raw["rtl433_stale_timeout_seconds"] = -5
+    with pytest.raises(ConfigError, match="rtl433_stale_timeout_seconds"):
+        parse_config(raw)
+
+
 def test_device_for_room_lookup():
     cfg = parse_config(_base_raw())
     device = cfg.device_for_room("livingroom")

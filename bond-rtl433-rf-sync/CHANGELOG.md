@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.4
+
+- **Code review follow-up on the 1.0.3 staleness watchdog** (automated
+  review, both Important-severity items):
+  - `rtl433_stale_timeout_seconds` now rejects `<= 0` at config-parse time
+    (`ConfigError`). A non-positive value made `queue.Queue.get(timeout=...)`
+    effectively non-blocking, spinning the restart loop and continuously
+    killing/respawning `rtl_433` as fast as `restart_backoff_seconds`
+    allowed.
+  - Added a regression test
+    (`test_lines_stop_returns_promptly_during_long_stale_wait`) for the
+    property the watchdog's safety depends on most: `stop()` (called from
+    another thread, as it is in production via the SIGTERM handler) must
+    interrupt an in-progress stale-timeout wait immediately, not block
+    until the timeout — potentially a full hour at the default — actually
+    elapses. This was manually verified during 1.0.3's review but hadn't
+    been captured as an automated test; confirmed the new test actually
+    catches a regression by running it against a deliberately broken
+    `stop()` (one that no longer calls `proc.terminate()`), where it hangs
+    instead of returning in ~0.2s.
+
 ## 1.0.3
 
 - **Added a staleness watchdog for the `rtl_433` subprocess.** Fixes a real
