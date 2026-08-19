@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.0.7
+
+- **Fixed a critical, self-inflicted bug in the 1.0.5/1.0.6 liveness
+  probe: it opened a second TCP connection to the same rtl_tcp host:port
+  that `rtl_433`'s real data connection already used.** `rtl_tcp` only
+  ever accepts one client. That second connection could never cleanly
+  succeed while the real one was healthy — it just hung until timeout
+  every single check, meaning the probe was guaranteed to eventually
+  (mis)report a perfectly healthy source as unreachable and force a
+  restart, over and over. Each forced restart made the SDR re-tune,
+  which generated noise the flex decoder sometimes misread as a real
+  wall-switch press.
+
+  Confirmed live, 2026-08-19: after a manual add-on restart, three
+  spurious `livingroom/light` Bond corrections fired within about two
+  minutes with no real button press — the user's actual, concrete bug
+  report ("turning the light off in Bond, then its state flips back to
+  on a few seconds later"). Reproducing the probe's own connection
+  attempt by hand against the live, healthy system confirmed the hang
+  directly: it timed out after the full probe timeout with `rtl_433`'s
+  real connection sitting right there, established and working. Also
+  found direct evidence of a resulting resource leak — abandoned
+  `CLOSE-WAIT` connections left on `rtl_tcp`'s side from failed probe
+  attempts.
+
+  This also very plausibly accounts for a chunk of the "pi network
+  degraded" restart-loop chaos earlier the same day (2026-08-18/19,
+  1.0.5's own incident writeup) — that diagnosis wasn't wrong that
+  *something* was broken, but the probe's own architecture meant it
+  would have kept forcing restarts even once the pi's network had fully
+  recovered, since it could never get a second connection slot while
+  `rtl_433` held the only one.
+
+  **Fix: check host reachability via ICMP ping instead**, which never
+  touches `rtl_tcp`'s one connection slot at all and so can never compete
+  with the real client. `default_liveness_probe()` now shells out to the
+  system `ping` binary rather than opening a socket;
+  `rtl433_source_port` is no longer used for liveness checking at all
+  (still used, as always, for the actual `rtl_433 -d rtl_tcp:host:port`
+  invocation). Added `iputils-ping` to the Dockerfile. Tests mock
+  `subprocess.run` for deterministic pass/fail cases (matching this
+  repo's existing precedent for mocking `subprocess.Popen`), plus one
+  real, unmocked smoke test against `127.0.0.1` so the feature is proven
+  against the actual `ping` binary at least once.
+
+  **Lesson for next time:** an active liveness check must never contend
+  for the exact same limited resource (here, `rtl_tcp`'s single client
+  slot) that the thing it's protecting also needs — that guarantees the
+  check interferes with the very system it's meant to monitor.
+
 ## 1.0.6
 
 - **Code review follow-up on the 1.0.5 liveness probe** (automated

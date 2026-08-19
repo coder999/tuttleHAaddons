@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import queue
-import socket
 import subprocess
 import threading
 import time
@@ -36,26 +35,45 @@ def rtl433_command(config: Config) -> list[str]:
 
 
 def default_liveness_probe(config: Config, timeout: float) -> Callable[[], bool] | None:
-    """Builds a probe that checks whether the rtl_tcp source host:port is
+    """Builds a probe that checks whether the rtl_tcp source *host* is
     reachable, independent of RF activity. Real wall-switch presses can
     legitimately be hours apart, so silence on rtl_433's stdout alone is
-    not a reliable "the connection died" signal (2026-08-19: the
+    not a reliable "the connection died" signal (2026-08-19 #1: the
     stale-output watchdog fired overnight on completely normal RF
-    inactivity, not an actual failure) - probing the TCP path directly
-    gives a real, fast signal that doesn't depend on anyone touching a
-    switch. Returns None for local-USB mode, where there's no remote host
-    to probe; the stale-output watchdog is the only applicable safety net
+    inactivity, not an actual failure) - probing directly gives a real,
+    fast signal that doesn't depend on anyone touching a switch.
+
+    Deliberately checks reachability via ICMP ping, NOT a second TCP
+    connection to the source port. An earlier version opened a second
+    `socket.create_connection` to the exact host:port that rtl_433's real
+    data connection already uses - but rtl_tcp only accepts one client,
+    so that second connection could never cleanly succeed while the real
+    one was healthy. It just hung until timeout, which then killed the
+    perfectly-good rtl_433 process, which made the SDR re-tune, which
+    generated noise that got misdecoded as fake wall-switch presses
+    (2026-08-19 #2: reproduced live - a spurious "livingroom/light" Bond
+    correction followed a probe-forced restart with no real button
+    press). Pinging the host instead never touches rtl_tcp's one
+    connection slot at all, so it can't compete with the real client.
+
+    Returns None for local-USB mode, where there's no remote host to
+    probe; the stale-output watchdog is the only applicable safety net
     there."""
     if config.rtl433_source != "rtl_tcp":
         return None
     host = config.rtl433_source_host
-    port = config.rtl433_source_port
+    ping_timeout = max(1, int(timeout))
 
     def probe() -> bool:
         try:
-            with socket.create_connection((host, port), timeout=timeout):
-                return True
-        except OSError:
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", str(ping_timeout), host],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout + 2,
+            )
+            return result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
             return False
 
     return probe

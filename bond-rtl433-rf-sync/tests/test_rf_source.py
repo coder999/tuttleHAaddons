@@ -1,7 +1,7 @@
-import socket
 import subprocess
 import threading
 import time
+import unittest.mock
 
 from app.config import parse_config
 from app.rf_source import (
@@ -60,38 +60,79 @@ def test_default_liveness_probe_is_none_for_local_source():
     assert default_liveness_probe(_config(rtl433_source="local"), timeout=1.0) is None
 
 
-def test_default_liveness_probe_true_when_host_reachable():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(("127.0.0.1", 0))
-    server.listen(1)
-    host, port = server.getsockname()
-    try:
+def test_default_liveness_probe_pings_the_configured_host_not_the_source_port():
+    """Root-cause regression test for a real incident (2026-08-19): the
+    original probe opened a *second* TCP connection to the same rtl_tcp
+    host:port that rtl_433's real data connection already uses. rtl_tcp
+    only accepts one client, so that second connection could never
+    cleanly succeed while the real connection was healthy - it just hung
+    until timeout, which then killed the perfectly-good rtl_433 process,
+    which caused the SDR to re-tune, which generated noise that got
+    misdecoded as fake wall-switch presses (confirmed: reproduced the
+    hang live against the real deployed system, watched it force a
+    restart, then watched a spurious "livingroom/light" Bond correction
+    follow). The fix: check host reachability via ICMP ping, which never
+    touches rtl_tcp's one connection slot at all."""
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, returncode=0)
+
+    with unittest.mock.patch.object(subprocess, "run", fake_run):
         probe = default_liveness_probe(
-            _config(rtl433_source="rtl_tcp", rtl433_source_host=host, rtl433_source_port=port),
-            timeout=1.0,
+            _config(
+                rtl433_source="rtl_tcp",
+                rtl433_source_host="192.168.0.27",
+                rtl433_source_port=1234,
+            ),
+            timeout=2.0,
         )
         assert probe is not None
         assert probe() is True
-    finally:
-        server.close()
+
+    assert calls, "expected the probe to shell out to ping"
+    (cmd,) = calls
+    assert "192.168.0.27" in cmd
+    assert "1234" not in " ".join(str(c) for c in cmd)  # never touches the source port
 
 
-def test_default_liveness_probe_false_when_host_unreachable():
-    # Bind then immediately close, so nothing is listening on this port -
-    # a real "connection refused", not a hang (a genuinely dead/unreachable
-    # host would instead time out; both count as "not reachable" for our
-    # purposes, but a closed local port is far faster and more reliable to
-    # test against than an actual network black hole).
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(("127.0.0.1", 0))
-    host, port = server.getsockname()
-    server.close()
+def test_default_liveness_probe_false_when_ping_fails():
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, returncode=1)
+
+    with unittest.mock.patch.object(subprocess, "run", fake_run):
+        probe = default_liveness_probe(
+            _config(rtl433_source="rtl_tcp", rtl433_source_host="10.255.255.1"),
+            timeout=2.0,
+        )
+        assert probe is not None
+        assert probe() is False
+
+
+def test_default_liveness_probe_false_when_ping_raises():
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, 2.0)
+
+    with unittest.mock.patch.object(subprocess, "run", fake_run):
+        probe = default_liveness_probe(
+            _config(rtl433_source="rtl_tcp", rtl433_source_host="10.255.255.1"),
+            timeout=2.0,
+        )
+        assert probe is not None
+        assert probe() is False
+
+
+def test_default_liveness_probe_real_ping_against_loopback():
+    """One real (unmocked) smoke test against an address that should
+    always answer ICMP - 127.0.0.1 - so this feature is proven against
+    the real `ping` binary at least once, not only against a mock."""
     probe = default_liveness_probe(
-        _config(rtl433_source="rtl_tcp", rtl433_source_host=host, rtl433_source_port=port),
-        timeout=1.0,
+        _config(rtl433_source="rtl_tcp", rtl433_source_host="127.0.0.1"),
+        timeout=2.0,
     )
     assert probe is not None
-    assert probe() is False
+    assert probe() is True
 
 
 def test_lines_liveness_probe_restarts_process_when_unreachable():

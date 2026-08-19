@@ -20,9 +20,10 @@ single self-contained add-on.
   `49.6`; raise or lower it if presses are being missed or the receiver is
   overloaded.
 - `rtl433_liveness_probe_interval_seconds` — how often, in `rtl_tcp` mode
-  only, to directly check that the source host:port is still reachable
-  (a plain TCP connect-and-close, independent of RF activity). Defaults
-  to `60`, minimum `5` (enforced — anything shorter risks killing a
+  only, to directly check that the source *host* is still reachable (an
+  ICMP ping — **not** a TCP connection to the source port; see the
+  important note below), independent of RF activity. Defaults to `60`,
+  minimum `5` (enforced — anything shorter risks killing a
   freshly-(re)spawned `rtl_433` before it has any real chance to
   reconnect, livelocking the restart loop). This is the *primary*
   detector for a lost/hung connection to a remote `rtl_tcp` source (e.g.
@@ -32,7 +33,21 @@ single self-contained add-on.
   raises instead of returning true/false is treated as "couldn't confirm
   reachability" (logged, retried next interval) rather than "confirmed
   unreachable" — it does not by itself force a restart.
-- `rtl433_liveness_probe_timeout_seconds` — the probe's own TCP connect
+
+  **Why ping, not a TCP connection to the source port (2026-08-19
+  incident):** `rtl_tcp` only accepts one client. An earlier version of
+  this probe opened a *second* TCP connection to the exact host:port
+  `rtl_433`'s real data connection already used — but that second
+  connection could never cleanly succeed while the real one was healthy;
+  it just hung until timeout. That falsely marked a perfectly healthy
+  source as unreachable, forced a restart, and the resulting SDR re-tune
+  generated noise that got misdecoded as fake wall-switch presses
+  (confirmed live: a spurious `livingroom/light` Bond correction directly
+  followed a probe-forced restart with no real button press). Pinging the
+  host instead never touches `rtl_tcp`'s one connection slot, so it can't
+  compete with the real client. Requires `iputils-ping` in the container
+  (included in the Dockerfile).
+- `rtl433_liveness_probe_timeout_seconds` — the probe's own ping
   timeout. Defaults to `10`. Rarely needs changing.
 - `rtl433_stale_timeout_seconds` — last-resort safety net: how long
   `rtl_433` can go without producing *any* output before it's presumed
