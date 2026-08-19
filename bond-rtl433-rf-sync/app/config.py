@@ -33,6 +33,7 @@ class Config:
     rtl433_frequency: int
     rtl433_sample_rate: int
     rtl433_gain: float
+    rtl433_stale_timeout_seconds: float
     debounce_seconds: float
     dry_run: bool
     code_table: tuple[CodeTableEntry, ...]
@@ -99,6 +100,7 @@ def parse_config(raw: dict) -> Config:
         rtl433_frequency=int(raw.get("rtl433_frequency", 304250000)),
         rtl433_sample_rate=int(raw.get("rtl433_sample_rate", 2048000)),
         rtl433_gain=float(raw.get("rtl433_gain", 49.6)),
+        rtl433_stale_timeout_seconds=float(raw.get("rtl433_stale_timeout_seconds", 3600.0)),
         debounce_seconds=float(raw.get("debounce_seconds", 3.0)),
         dry_run=bool(raw.get("dry_run", False)),
         code_table=code_table,

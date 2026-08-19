@@ -76,6 +76,18 @@ def test_parse_config_zero_max_speed_raises():
         parse_config(raw)
 
 
+def test_parse_config_rtl433_stale_timeout_seconds_defaults_to_one_hour():
+    cfg = parse_config(_base_raw())
+    assert cfg.rtl433_stale_timeout_seconds == 3600.0
+
+
+def test_parse_config_rtl433_stale_timeout_seconds_override():
+    raw = _base_raw()
+    raw["rtl433_stale_timeout_seconds"] = 300
+    cfg = parse_config(raw)
+    assert cfg.rtl433_stale_timeout_seconds == 300.0
+
+
 def test_device_for_room_lookup():
     cfg = parse_config(_base_raw())
     device = cfg.device_for_room("livingroom")

@@ -74,6 +74,29 @@ def test_lines_restarts_process_after_it_exits():
     assert lines == ["tick", "tick", "tick"]
 
 
+def test_lines_restarts_process_after_prolonged_silence():
+    """Covers the real 2026-08-17/18 incident: rtl_433's underlying rtl_tcp
+    connection went silently dead (pi WiFi hang) without the rtl_433 process
+    itself exiting, so the old exit-triggered restart never fired and the
+    add-on sat blocked on a dead subprocess for over a day with no output
+    and no error logged."""
+    manager = RFSourceManager(
+        _config(),
+        restart_backoff_seconds=0.01,
+        stale_timeout_seconds=0.05,
+        command=["python3", "-c", "print('line1', flush=True); import time; time.sleep(60)"],
+    )
+    lines = []
+    for line in manager.lines():
+        lines.append(line)
+        if len(lines) == 2:
+            manager.stop()
+            break
+    # First "line1" from the original (now-hung) process; staleness watchdog
+    # kills and restarts it, and the fresh process prints "line1" again.
+    assert lines == ["line1", "line1"]
+
+
 def test_lines_retries_after_popen_raises_on_spawn(monkeypatch):
     manager = RFSourceManager(
         _config(),

@@ -19,6 +19,17 @@ single self-contained add-on.
 - `rtl433_gain` — SDR tuner gain in dB passed to `rtl_433 -g`. Defaults to
   `49.6`; raise or lower it if presses are being missed or the receiver is
   overloaded.
+- `rtl433_stale_timeout_seconds` — how long `rtl_433` can go without
+  producing any output before it's presumed hung and killed/restarted.
+  Defaults to `3600` (1 hour). This is a watchdog for a real incident
+  (2026-08-17/18): when the `rtl_433 -d rtl_tcp:...` source lost its
+  connection to a remote `rtl_tcp` server (the source pi's WiFi driver
+  hung), the `rtl_433` process itself never exited or errored — it just
+  went silent — so the existing exit-triggered restart never fired and the
+  add-on sat blocked for over a day with no output and no error logged.
+  This is *not* a signal of normal RF quiet periods (real button presses
+  can be hours apart), so keep it generous; lower it only if you need
+  faster recovery and can tolerate more frequent proactive reconnects.
 - `code_table` — maps each switch's decoded RF `stable_id` to a room/button.
 - `room_devices` — maps each room to its Bond `device_id` and `max_speed`.
 - `debounce_seconds` — quiet period (in seconds) after the last matching RF
@@ -57,3 +68,8 @@ retired, including the automations, `input_number` helpers, and their
 entity registry entries. See `CHANGELOG.md` for the version history, or
 this repo's git tags (`bond-rtl433-rf-sync-1.0.0`, `-1.0.1`) for the full
 design/implementation/validation record.
+
+**2026-08-17/18 incident:** the `rtl_tcp` source pi's WiFi driver hung,
+silently killing this add-on's data feed for over a day with nothing
+logged — see `rtl433_stale_timeout_seconds` above and `CHANGELOG.md`'s
+`1.0.3` entry for the watchdog fix.

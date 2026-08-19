@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.3
+
+- **Added a staleness watchdog for the `rtl_433` subprocess.** Fixes a real
+  incident (2026-08-17/18): when the `rtl_tcp` source pi's WiFi driver hung,
+  `rtl_433 -d rtl_tcp:...` lost its connection but never exited or errored —
+  it just went silent — so the existing exit-triggered restart never fired.
+  The add-on sat blocked on a dead subprocess for over a day with no output
+  and nothing logged, until it was manually restarted. `rtl_433`'s stdout is
+  now read on a background thread through a queue with a timeout
+  (`rtl433_stale_timeout_seconds`, default 3600s/1 hour); if nothing arrives
+  within that window while the process is still nominally running, it's
+  killed and restarted like any other failure. Default is deliberately
+  generous since real button presses can legitimately be hours apart, so
+  silence alone isn't a reliable "connection is dead" signal — this is a
+  self-healing safety net, not a fast-failover mechanism.
+
 ## 1.0.2
 
 - Added a custom add-on icon (`icon.svg`/`icon.png`) — a fan pinwheel with

@@ -120,7 +120,9 @@ def main() -> int:
     event_log = EventLog()
     pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
     debouncer = Debouncer(config.debounce_seconds, pipeline.handle_event)
-    rf_source = RFSourceManager(config)
+    rf_source = RFSourceManager(
+        config, stale_timeout_seconds=config.rtl433_stale_timeout_seconds
+    )
     _install_shutdown_handler(rf_source)
 
     pipeline_thread = threading.Thread(
