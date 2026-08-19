@@ -156,6 +156,7 @@ def test_unknown_room_device_lookup_failure_is_logged_not_raised(tmp_path):
         rtl433_sample_rate=2048000,
         rtl433_gain=49.6,
         rtl433_stale_timeout_seconds=3600.0,
+        rtl433_liveness_probe_interval_seconds=60.0,
         debounce_seconds=3.0,
         dry_run=False,
         code_table=(CodeTableEntry(room="diningroom", button="power", stable_id=0x1D9),),

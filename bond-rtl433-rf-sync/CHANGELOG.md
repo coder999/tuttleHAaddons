@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.5
+
+- **Added an active liveness probe for `rtl_tcp` mode; demoted the
+  stale-output watchdog to a last-resort fallback.** Real-world follow-up
+  to 1.0.3/1.0.4 (2026-08-19): overnight, the log showed "no rtl_433
+  output for 3600.0s, presumed hung, restarting" — but nobody had touched
+  a wall switch, so nothing was actually wrong. RF silence and "the
+  connection is dead" are two different things, and stdout inactivity
+  alone can't tell them apart in a household that can legitimately go
+  hours between button presses.
+  - New: `rtl433_liveness_probe_interval_seconds` (default `60`). In
+    `rtl_tcp` mode, a background thread directly probes the source
+    host:port (plain TCP connect-and-close) on this interval, independent
+    of RF activity, and forces a restart if it fails. This is now the
+    primary detector for a lost/hung `rtl_tcp` connection - it reacts in
+    roughly one interval and can't be fooled by a quiet night. No-op in
+    `local` mode (nothing to probe).
+  - `rtl433_stale_timeout_seconds` default raised `3600` → `21600` (1 hour
+    → 6 hours), repositioning it as a backstop behind the liveness probe
+    rather than the primary mechanism, and validated `> 0` (mirrors the
+    same guard added for the probe interval).
+  - `default_liveness_probe()`/the manager's new `liveness_probe`
+    constructor param follow the same dependency-injection pattern as the
+    existing `command` override, so the probe is real-socket-tested
+    (`test_default_liveness_probe_true/false_when_host_*reachable`, a
+    real local TCP server, no mocking) while `RFSourceManager`'s own tests
+    inject a fake probe function and stay fast/deterministic.
+  - Also applied the two Minor cleanups from the 1.0.3 code review: the
+    unenforced `# type: ignore[misc]` (no type-checker configured in this
+    repo) and the redundant quoted-string type annotations (already
+    covered by `from __future__ import annotations`) are gone.
+
 ## 1.0.4
 
 - **Code review follow-up on the 1.0.3 staleness watchdog** (automated

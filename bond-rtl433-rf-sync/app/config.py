@@ -34,6 +34,7 @@ class Config:
     rtl433_sample_rate: int
     rtl433_gain: float
     rtl433_stale_timeout_seconds: float
+    rtl433_liveness_probe_interval_seconds: float
     debounce_seconds: float
     dry_run: bool
     code_table: tuple[CodeTableEntry, ...]
@@ -83,12 +84,22 @@ def parse_config(raw: dict) -> Config:
             f"{sorted(invalid_max_speed)}"
         )
 
-    rtl433_stale_timeout_seconds = float(raw.get("rtl433_stale_timeout_seconds", 3600.0))
+    rtl433_stale_timeout_seconds = float(raw.get("rtl433_stale_timeout_seconds", 21600.0))
     if rtl433_stale_timeout_seconds <= 0:
         raise ConfigError(
             "rtl433_stale_timeout_seconds must be > 0, got "
             f"{rtl433_stale_timeout_seconds!r} - a non-positive value makes the "
             "restart loop spin, continuously killing and respawning rtl_433"
+        )
+
+    rtl433_liveness_probe_interval_seconds = float(
+        raw.get("rtl433_liveness_probe_interval_seconds", 60.0)
+    )
+    if rtl433_liveness_probe_interval_seconds <= 0:
+        raise ConfigError(
+            "rtl433_liveness_probe_interval_seconds must be > 0, got "
+            f"{rtl433_liveness_probe_interval_seconds!r} - a non-positive value "
+            "makes the probe loop spin continuously"
         )
 
     rooms_with_devices = {d.room for d in room_devices}
@@ -109,6 +120,7 @@ def parse_config(raw: dict) -> Config:
         rtl433_sample_rate=int(raw.get("rtl433_sample_rate", 2048000)),
         rtl433_gain=float(raw.get("rtl433_gain", 49.6)),
         rtl433_stale_timeout_seconds=rtl433_stale_timeout_seconds,
+        rtl433_liveness_probe_interval_seconds=rtl433_liveness_probe_interval_seconds,
         debounce_seconds=float(raw.get("debounce_seconds", 3.0)),
         dry_run=bool(raw.get("dry_run", False)),
         code_table=code_table,

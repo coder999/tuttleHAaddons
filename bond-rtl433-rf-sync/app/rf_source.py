@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import queue
+import socket
 import subprocess
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from app.config import Config
 
@@ -34,35 +35,88 @@ def rtl433_command(config: Config) -> list[str]:
     return ["rtl_433", *build_source_args(config), "-R", "0", "-X", FLEX_DECODER]
 
 
+def default_liveness_probe(config: Config, timeout: float) -> Callable[[], bool] | None:
+    """Builds a probe that checks whether the rtl_tcp source host:port is
+    reachable, independent of RF activity. Real wall-switch presses can
+    legitimately be hours apart, so silence on rtl_433's stdout alone is
+    not a reliable "the connection died" signal (2026-08-19: the
+    stale-output watchdog fired overnight on completely normal RF
+    inactivity, not an actual failure) - probing the TCP path directly
+    gives a real, fast signal that doesn't depend on anyone touching a
+    switch. Returns None for local-USB mode, where there's no remote host
+    to probe; the stale-output watchdog is the only applicable safety net
+    there."""
+    if config.rtl433_source != "rtl_tcp":
+        return None
+    host = config.rtl433_source_host
+    port = config.rtl433_source_port
+
+    def probe() -> bool:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    return probe
+
+
 class RFSourceManager:
     """Spawns rtl_433 (or, in tests, a fake stand-in command) and yields its
     stdout lines, restarting with a fixed backoff if the process exits
-    unexpectedly (SDR unplugged, rtl_tcp connection dropped, etc.) or if it
-    goes silent for longer than stale_timeout_seconds while still nominally
-    running (rtl_tcp connection hung without the process itself exiting)."""
+    unexpectedly (SDR unplugged, rtl_tcp connection dropped, etc.), if an
+    active liveness probe reports the source unreachable (see
+    default_liveness_probe), or - as a last-resort safety net - if it goes
+    silent for longer than stale_timeout_seconds while still nominally
+    running."""
 
     def __init__(
         self,
         config: Config,
         restart_backoff_seconds: float = 5.0,
-        stale_timeout_seconds: float = 3600.0,
+        stale_timeout_seconds: float = 21600.0,
+        liveness_probe_interval_seconds: float = 60.0,
+        liveness_probe_timeout_seconds: float = 10.0,
         command: list[str] | None = None,
+        liveness_probe: Callable[[], bool] | None = None,
     ):
         self._restart_backoff_seconds = restart_backoff_seconds
         self._stale_timeout_seconds = stale_timeout_seconds
+        self._liveness_probe_interval_seconds = liveness_probe_interval_seconds
         self._command = command or rtl433_command(config)
+        self._liveness_probe = (
+            liveness_probe
+            if liveness_probe is not None
+            else default_liveness_probe(config, liveness_probe_timeout_seconds)
+        )
         self._stopped = False
+        self._stop_event = threading.Event()
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        self._prober_started = False
 
     def stop(self) -> None:
         self._stopped = True
+        self._stop_event.set()
+        self._terminate_current_proc()
+
+    def _terminate_current_proc(self) -> None:
         with self._lock:
             if self._proc is not None:
                 self._proc.terminate()
 
+    def _run_liveness_prober(self) -> None:
+        assert self._liveness_probe is not None
+        while not self._stop_event.wait(self._liveness_probe_interval_seconds):
+            if not self._liveness_probe():
+                print(
+                    "rtl_433 source unreachable (liveness probe failed), forcing restart",
+                    flush=True,
+                )
+                self._terminate_current_proc()
+
     @staticmethod
-    def _pump_stdout(proc: subprocess.Popen, out: "queue.Queue[object]") -> None:
+    def _pump_stdout(proc: subprocess.Popen, out: queue.Queue[object]) -> None:
         """Runs in a background thread so the main loop can apply a timeout
         to stdout inactivity - a plain `for line in proc.stdout` blocks
         forever if the process is alive but has stopped producing output
@@ -75,6 +129,9 @@ class RFSourceManager:
         out.put(_EOF)
 
     def lines(self) -> Iterator[str]:
+        if self._liveness_probe is not None and not self._prober_started:
+            self._prober_started = True
+            threading.Thread(target=self._run_liveness_prober, daemon=True).start()
         while not self._stopped:
             try:
                 proc = subprocess.Popen(
@@ -95,7 +152,7 @@ class RFSourceManager:
             with self._lock:
                 self._proc = proc
 
-            out: "queue.Queue[object]" = queue.Queue()
+            out: queue.Queue[object] = queue.Queue()
             reader = threading.Thread(target=self._pump_stdout, args=(proc, out), daemon=True)
             reader.start()
 
@@ -109,7 +166,7 @@ class RFSourceManager:
                         break
                     if item is _EOF:
                         break
-                    yield item  # type: ignore[misc]
+                    yield item
                     if self._stopped:
                         return
             finally:

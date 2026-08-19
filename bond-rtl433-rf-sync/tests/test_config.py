@@ -76,9 +76,14 @@ def test_parse_config_zero_max_speed_raises():
         parse_config(raw)
 
 
-def test_parse_config_rtl433_stale_timeout_seconds_defaults_to_one_hour():
+def test_parse_config_rtl433_stale_timeout_seconds_defaults_to_six_hours():
+    # Deliberately generous: this is now a last-resort safety net behind the
+    # active liveness probe (see rtl433_liveness_probe_interval_seconds
+    # below), not the primary detector - a real household can go many hours
+    # without a wall-switch press (2026-08-19: the old 1-hour default fired
+    # overnight on completely normal RF silence, not an actual failure).
     cfg = parse_config(_base_raw())
-    assert cfg.rtl433_stale_timeout_seconds == 3600.0
+    assert cfg.rtl433_stale_timeout_seconds == 21600.0
 
 
 def test_parse_config_rtl433_stale_timeout_seconds_override():
@@ -86,6 +91,32 @@ def test_parse_config_rtl433_stale_timeout_seconds_override():
     raw["rtl433_stale_timeout_seconds"] = 300
     cfg = parse_config(raw)
     assert cfg.rtl433_stale_timeout_seconds == 300.0
+
+
+def test_parse_config_rtl433_liveness_probe_interval_seconds_defaults_to_one_minute():
+    cfg = parse_config(_base_raw())
+    assert cfg.rtl433_liveness_probe_interval_seconds == 60.0
+
+
+def test_parse_config_rtl433_liveness_probe_interval_seconds_override():
+    raw = _base_raw()
+    raw["rtl433_liveness_probe_interval_seconds"] = 30
+    cfg = parse_config(raw)
+    assert cfg.rtl433_liveness_probe_interval_seconds == 30.0
+
+
+def test_parse_config_zero_liveness_probe_interval_raises():
+    raw = _base_raw()
+    raw["rtl433_liveness_probe_interval_seconds"] = 0
+    with pytest.raises(ConfigError, match="rtl433_liveness_probe_interval_seconds"):
+        parse_config(raw)
+
+
+def test_parse_config_negative_liveness_probe_interval_raises():
+    raw = _base_raw()
+    raw["rtl433_liveness_probe_interval_seconds"] = -1
+    with pytest.raises(ConfigError, match="rtl433_liveness_probe_interval_seconds"):
+        parse_config(raw)
 
 
 def test_parse_config_zero_stale_timeout_raises():

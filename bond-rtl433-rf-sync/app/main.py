@@ -121,7 +121,9 @@ def main() -> int:
     pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
     debouncer = Debouncer(config.debounce_seconds, pipeline.handle_event)
     rf_source = RFSourceManager(
-        config, stale_timeout_seconds=config.rtl433_stale_timeout_seconds
+        config,
+        stale_timeout_seconds=config.rtl433_stale_timeout_seconds,
+        liveness_probe_interval_seconds=config.rtl433_liveness_probe_interval_seconds,
     )
     _install_shutdown_handler(rf_source)
 

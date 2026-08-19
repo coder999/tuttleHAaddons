@@ -19,17 +19,27 @@ single self-contained add-on.
 - `rtl433_gain` — SDR tuner gain in dB passed to `rtl_433 -g`. Defaults to
   `49.6`; raise or lower it if presses are being missed or the receiver is
   overloaded.
-- `rtl433_stale_timeout_seconds` — how long `rtl_433` can go without
-  producing any output before it's presumed hung and killed/restarted.
-  Defaults to `3600` (1 hour). This is a watchdog for a real incident
-  (2026-08-17/18): when the `rtl_433 -d rtl_tcp:...` source lost its
-  connection to a remote `rtl_tcp` server (the source pi's WiFi driver
-  hung), the `rtl_433` process itself never exited or errored — it just
-  went silent — so the existing exit-triggered restart never fired and the
-  add-on sat blocked for over a day with no output and no error logged.
-  This is *not* a signal of normal RF quiet periods (real button presses
-  can be hours apart), so keep it generous; lower it only if you need
-  faster recovery and can tolerate more frequent proactive reconnects.
+- `rtl433_liveness_probe_interval_seconds` — how often, in `rtl_tcp` mode
+  only, to directly check that the source host:port is still reachable
+  (a plain TCP connect-and-close, independent of RF activity). Defaults
+  to `60`. This is the *primary* detector for a lost/hung connection to
+  a remote `rtl_tcp` source (e.g. the source pi's WiFi driver hanging) —
+  it reacts within roughly one interval, and unlike stdout silence it
+  can't be confused with a normal quiet period. No-op in `local` mode
+  (nothing to probe).
+- `rtl433_stale_timeout_seconds` — last-resort safety net: how long
+  `rtl_433` can go without producing *any* output before it's presumed
+  hung and killed/restarted anyway, even if the liveness probe (when
+  applicable) hasn't caught anything. Defaults to `21600` (6 hours) —
+  deliberately long, since real wall-switch presses can legitimately be
+  hours apart and this has no way to tell "nobody touched a switch" apart
+  from "the connection died" the way the liveness probe can. History:
+  originally added at a 1-hour default after a real incident
+  (2026-08-17/18, `rtl_433 -d rtl_tcp:...` losing its connection silently
+  without the process exiting, going undetected for over a day); that
+  1-hour default then false-positived on nothing but normal overnight
+  inactivity (2026-08-19), which is what prompted adding the liveness
+  probe above as the real fix and loosening this to a pure fallback.
 - `code_table` — maps each switch's decoded RF `stable_id` to a room/button.
 - `room_devices` — maps each room to its Bond `device_id` and `max_speed`.
 - `debounce_seconds` — quiet period (in seconds) after the last matching RF
@@ -71,5 +81,7 @@ design/implementation/validation record.
 
 **2026-08-17/18 incident:** the `rtl_tcp` source pi's WiFi driver hung,
 silently killing this add-on's data feed for over a day with nothing
-logged — see `rtl433_stale_timeout_seconds` above and `CHANGELOG.md`'s
-`1.0.3` entry for the watchdog fix.
+logged. **2026-08-19 follow-up:** the resulting stale-output watchdog's
+1-hour default then false-positived on ordinary overnight RF silence — see
+`rtl433_liveness_probe_interval_seconds` / `rtl433_stale_timeout_seconds`
+above and `CHANGELOG.md`'s `1.0.3`/`1.0.5` entries for the full story.
