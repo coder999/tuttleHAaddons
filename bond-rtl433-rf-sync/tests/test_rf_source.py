@@ -158,6 +158,88 @@ def test_lines_stop_returns_promptly_with_slow_liveness_probe_interval():
     assert elapsed < 5.0  # nowhere near the 30s probe interval
 
 
+def test_lines_liveness_prober_survives_probe_exception():
+    """An injected (or, in principle, a future built-in) probe that raises
+    instead of returning False must not silently kill the prober thread -
+    that would permanently and silently fall back to relying solely on the
+    6-hour stale-timeout for the rest of the process's life, the exact
+    failure mode this whole feature exists to move away from. An
+    exception is treated as "couldn't confirm reachability", not as
+    "confirmed unreachable" - it does not by itself force a restart,
+    since we don't actually know the source is down."""
+    calls = {"count": 0}
+
+    def flaky_probe():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise ValueError("boom")
+        return True
+
+    manager = RFSourceManager(
+        _config(),
+        restart_backoff_seconds=0.01,
+        liveness_probe_interval_seconds=0.02,
+        command=["python3", "-c", "print('line1', flush=True); import time; time.sleep(60)"],
+        liveness_probe=flaky_probe,
+    )
+
+    def stop_soon():
+        time.sleep(0.3)
+        manager.stop()
+
+    threading.Thread(target=stop_soon, daemon=True).start()
+    lines = list(manager.lines())
+
+    assert lines == ["line1"]  # never restarted - the exception didn't force one
+    assert calls["count"] >= 2  # prober kept looping after the exception, not dead
+
+
+def test_lines_local_source_never_starts_liveness_prober():
+    """End-to-end through RFSourceManager's real default wiring (no
+    liveness_probe= override) - the local-mode no-op isn't just true of
+    default_liveness_probe() in isolation, it must actually hold for the
+    manager that consumes it."""
+    manager = RFSourceManager(
+        _config(rtl433_source="local"),
+        restart_backoff_seconds=0.01,
+        command=["python3", "-c", "print('line1', flush=True)"],
+    )
+    assert manager._liveness_probe is None
+
+    lines = []
+    for line in manager.lines():
+        lines.append(line)
+        if len(lines) == 1:
+            manager.stop()
+            break
+
+    assert manager._prober_started is False
+
+
+def test_lines_exit_log_distinguishes_probe_triggered_restart(capsys):
+    """A reader skimming only the 'rtl_433 exited' line (not the prober's
+    separate 'forcing restart' line just before it) should still be able
+    to tell a probe-triggered kill apart from a genuine crash."""
+    manager = RFSourceManager(
+        _config(),
+        restart_backoff_seconds=0.01,
+        liveness_probe_interval_seconds=0.05,
+        command=["python3", "-c", "print('line1', flush=True); import time; time.sleep(60)"],
+        liveness_probe=lambda: False,
+    )
+    lines = []
+    for line in manager.lines():
+        lines.append(line)
+        if len(lines) == 2:
+            manager.stop()
+            break
+
+    out = capsys.readouterr().out
+    exit_lines = [line for line in out.splitlines() if line.startswith("rtl_433 exited")]
+    assert exit_lines, "expected at least one 'rtl_433 exited' log line"
+    assert "liveness probe" in exit_lines[0]
+
+
 def test_lines_yields_subprocess_stdout():
     manager = RFSourceManager(
         _config(),

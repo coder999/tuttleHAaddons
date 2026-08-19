@@ -1,7 +1,7 @@
 name: Bond-rtl_433 RF Sync
 slug: bond_rtl433_rf_sync
 description: Corrects Bond Bridge's believed fan/light state from wall-switch RF presses, without transmitting anything
-version: "1.0.5"
+version: "1.0.6"
 arch:
   - amd64
   - aarch64
@@ -21,6 +21,7 @@ options:
   rtl433_gain: 49.6
   rtl433_stale_timeout_seconds: 21600.0
   rtl433_liveness_probe_interval_seconds: 60.0
+  rtl433_liveness_probe_timeout_seconds: 10.0
   debounce_seconds: 3.0
   dry_run: false
   code_table:
@@ -72,6 +73,7 @@ schema:
   rtl433_gain: float
   rtl433_stale_timeout_seconds: float
   rtl433_liveness_probe_interval_seconds: float
+  rtl433_liveness_probe_timeout_seconds: float
   debounce_seconds: float
   dry_run: bool
   code_table:

@@ -119,6 +119,35 @@ def test_parse_config_negative_liveness_probe_interval_raises():
         parse_config(raw)
 
 
+def test_parse_config_rtl433_liveness_probe_timeout_seconds_defaults_to_ten():
+    cfg = parse_config(_base_raw())
+    assert cfg.rtl433_liveness_probe_timeout_seconds == 10.0
+
+
+def test_parse_config_rtl433_liveness_probe_timeout_seconds_override():
+    raw = _base_raw()
+    raw["rtl433_liveness_probe_timeout_seconds"] = 3
+    cfg = parse_config(raw)
+    assert cfg.rtl433_liveness_probe_timeout_seconds == 3.0
+
+
+def test_parse_config_zero_liveness_probe_timeout_raises():
+    raw = _base_raw()
+    raw["rtl433_liveness_probe_timeout_seconds"] = 0
+    with pytest.raises(ConfigError, match="rtl433_liveness_probe_timeout_seconds"):
+        parse_config(raw)
+
+
+def test_parse_config_too_small_liveness_probe_interval_raises():
+    # A positive but too-small interval can livelock the restart loop: a
+    # freshly-spawned rtl_433 gets killed by the next probe check before it
+    # has any real chance to reconnect and produce output.
+    raw = _base_raw()
+    raw["rtl433_liveness_probe_interval_seconds"] = 1
+    with pytest.raises(ConfigError, match="rtl433_liveness_probe_interval_seconds"):
+        parse_config(raw)
+
+
 def test_parse_config_zero_stale_timeout_raises():
     raw = _base_raw()
     raw["rtl433_stale_timeout_seconds"] = 0

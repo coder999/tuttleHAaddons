@@ -94,6 +94,7 @@ class RFSourceManager:
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
         self._prober_started = False
+        self._probe_triggered_kill = threading.Event()
 
     def stop(self) -> None:
         self._stopped = True
@@ -108,11 +109,23 @@ class RFSourceManager:
     def _run_liveness_prober(self) -> None:
         assert self._liveness_probe is not None
         while not self._stop_event.wait(self._liveness_probe_interval_seconds):
-            if not self._liveness_probe():
+            try:
+                reachable = self._liveness_probe()
+            except Exception as exc:  # noqa: BLE001 - never let the prober die silently;
+                # a raising probe means "couldn't confirm reachability", not "confirmed
+                # unreachable" - keep looping rather than forcing a restart on it, and
+                # rely on the stale-timeout fallback if something is actually wrong.
+                print(
+                    f"liveness probe raised {exc!r}, will retry next interval",
+                    flush=True,
+                )
+                continue
+            if not reachable:
                 print(
                     "rtl_433 source unreachable (liveness probe failed), forcing restart",
                     flush=True,
                 )
+                self._probe_triggered_kill.set()
                 self._terminate_current_proc()
 
     @staticmethod
@@ -181,6 +194,13 @@ class RFSourceManager:
                 print(
                     f"no rtl_433 output for {self._stale_timeout_seconds}s, presumed "
                     f"hung, restarting in {self._restart_backoff_seconds}s",
+                    flush=True,
+                )
+            elif self._probe_triggered_kill.is_set():
+                self._probe_triggered_kill.clear()
+                print(
+                    f"rtl_433 exited (code={proc.returncode}) after a liveness probe "
+                    f"failure, restarting in {self._restart_backoff_seconds}s",
                     flush=True,
                 )
             else:

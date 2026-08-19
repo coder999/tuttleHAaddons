@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.0.6
+
+- **Code review follow-up on the 1.0.5 liveness probe** (automated
+  review, both Important-severity items plus three of four Minor items;
+  the fourth - pre-existing fixed 5s restart backoff during an extended
+  fast-refusing-connection outage - was left as-is, since it's unchanged
+  from 4059140/fa7a83b, not a regression, and the reviewer confirmed the
+  timing is fine for the actual hung-connection failure mode this feature
+  targets):
+  - **`_run_liveness_prober` no longer dies silently on an unexpected
+    probe exception.** Previously, any exception other than `OSError`
+    from the (possibly test-injected) probe function killed the daemon
+    thread on the spot, permanently and silently falling back to the
+    6-hour stale-timeout for the rest of the process's life - the exact
+    failure mode this feature exists to move away from. Now caught,
+    logged, and retried next interval; treated as "couldn't confirm
+    reachability", not "confirmed unreachable", so it doesn't itself
+    force a restart.
+  - **Added a real end-to-end test for the local-mode no-op path**
+    through `RFSourceManager`'s actual default wiring (previously only
+    tested `default_liveness_probe()` in isolation and inferred the
+    manager-level behavior transitively).
+  - **`rtl433_liveness_probe_interval_seconds` now has an enforced
+    minimum of 5s** (previously only `> 0`), closing off a reproduced
+    livelock at pathologically small intervals (e.g. 1ms) where the
+    prober kills a freshly-(re)spawned `rtl_433` before it can ever
+    produce output.
+  - **New `rtl433_liveness_probe_timeout_seconds`** (default 10s) makes
+    the probe's own connect timeout a proper config option, following the
+    same parse/default/validate/schema/README pattern as every other
+    tunable, instead of being a constructor-only default.
+  - **The exit-path log line now distinguishes a probe-triggered restart
+    from a genuine crash** (`"...exited (code=...) after a liveness probe
+    failure, restarting..."`), so a reader skimming only that line - not
+    the prober's separate "forcing restart" line just before it - can
+    still tell the two apart.
+
 ## 1.0.5
 
 - **Added an active liveness probe for `rtl_tcp` mode; demoted the

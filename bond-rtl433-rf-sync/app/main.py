@@ -124,6 +124,7 @@ def main() -> int:
         config,
         stale_timeout_seconds=config.rtl433_stale_timeout_seconds,
         liveness_probe_interval_seconds=config.rtl433_liveness_probe_interval_seconds,
+        liveness_probe_timeout_seconds=config.rtl433_liveness_probe_timeout_seconds,
     )
     _install_shutdown_handler(rf_source)
 

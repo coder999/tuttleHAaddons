@@ -22,11 +22,18 @@ single self-contained add-on.
 - `rtl433_liveness_probe_interval_seconds` — how often, in `rtl_tcp` mode
   only, to directly check that the source host:port is still reachable
   (a plain TCP connect-and-close, independent of RF activity). Defaults
-  to `60`. This is the *primary* detector for a lost/hung connection to
-  a remote `rtl_tcp` source (e.g. the source pi's WiFi driver hanging) —
-  it reacts within roughly one interval, and unlike stdout silence it
-  can't be confused with a normal quiet period. No-op in `local` mode
-  (nothing to probe).
+  to `60`, minimum `5` (enforced — anything shorter risks killing a
+  freshly-(re)spawned `rtl_433` before it has any real chance to
+  reconnect, livelocking the restart loop). This is the *primary*
+  detector for a lost/hung connection to a remote `rtl_tcp` source (e.g.
+  the source pi's WiFi driver hanging) — it reacts within roughly one
+  interval, and unlike stdout silence it can't be confused with a normal
+  quiet period. No-op in `local` mode (nothing to probe). A probe that
+  raises instead of returning true/false is treated as "couldn't confirm
+  reachability" (logged, retried next interval) rather than "confirmed
+  unreachable" — it does not by itself force a restart.
+- `rtl433_liveness_probe_timeout_seconds` — the probe's own TCP connect
+  timeout. Defaults to `10`. Rarely needs changing.
 - `rtl433_stale_timeout_seconds` — last-resort safety net: how long
   `rtl_433` can go without producing *any* output before it's presumed
   hung and killed/restarted anyway, even if the liveness probe (when
