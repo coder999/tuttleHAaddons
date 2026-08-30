@@ -107,3 +107,8 @@ logged. **2026-08-19 follow-up:** the resulting stale-output watchdog's
 1-hour default then false-positived on ordinary overnight RF silence — see
 `rtl433_liveness_probe_interval_seconds` / `rtl433_stale_timeout_seconds`
 above and `CHANGELOG.md`'s `1.0.3`/`1.0.5` entries for the full story.
+
+**2026-08-29 incident:** an unrelated deadlock — `proc.wait()` after
+`proc.terminate()` had no timeout, so a `rtl_433` that didn't die from
+SIGTERM froze the whole manager silently for 22+ hours (missed a real
+wall-switch press). Fixed in `1.0.8`; see `CHANGELOG.md`.

@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.8
+
+- **Fixed a deadlock that could freeze the whole add-on silently: the
+  restart path called `proc.terminate()` then `proc.wait()` with no
+  timeout.** If `rtl_433` didn't actually exit in response to SIGTERM —
+  which happens when it's blocked on a dead/stale `rtl_tcp` connection —
+  `proc.wait()` blocked forever. Since that's the *only* code path that
+  spawns a fresh `rtl_433` and logs anything, the entire manager froze:
+  no more restarts, no more log lines, nothing, indefinitely.
+
+  Confirmed live, 2026-08-29: the add-on went completely silent for 22+
+  hours (last log line 08-28 21:03), missing wall-switch presses
+  including a dining-room light turn-on that never reached Bond/HomeKit.
+  On the pi side, `rtl_tcp`'s socket to the add-on was still `ESTAB`
+  with **Send-Q actively growing** (44944 → 144856 bytes in 3s) — the pi
+  kept streaming SDR data into a connection nobody on the add-on side
+  was reading, the exact stuck-consumer signature you'd expect from a
+  process wedged in `proc.wait()`. A manual add-on restart recovered it
+  immediately.
+
+  **Fix:** `proc.wait()` now takes a bounded `terminate_timeout_seconds`
+  (default 5s); if the process hasn't exited by then, escalate to
+  `proc.kill()`. Regression test drives a fake subprocess that installs
+  `SIGTERM, SIG_IGN` and confirms the manager still recovers (kills it,
+  spawns a fresh one) instead of hanging.
+
 ## 1.0.7
 
 - **Fixed a critical, self-inflicted bug in the 1.0.5/1.0.6 liveness

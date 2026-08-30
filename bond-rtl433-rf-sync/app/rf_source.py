@@ -95,12 +95,14 @@ class RFSourceManager:
         stale_timeout_seconds: float = 21600.0,
         liveness_probe_interval_seconds: float = 60.0,
         liveness_probe_timeout_seconds: float = 10.0,
+        terminate_timeout_seconds: float = 5.0,
         command: list[str] | None = None,
         liveness_probe: Callable[[], bool] | None = None,
     ):
         self._restart_backoff_seconds = restart_backoff_seconds
         self._stale_timeout_seconds = stale_timeout_seconds
         self._liveness_probe_interval_seconds = liveness_probe_interval_seconds
+        self._terminate_timeout_seconds = terminate_timeout_seconds
         self._command = command or rtl433_command(config)
         self._liveness_probe = (
             liveness_probe
@@ -202,7 +204,17 @@ class RFSourceManager:
                         return
             finally:
                 proc.terminate()
-                proc.wait()
+                try:
+                    proc.wait(timeout=self._terminate_timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    # Process ignored SIGTERM (e.g. blocked on a dead
+                    # rtl_tcp connection) - escalate rather than block this
+                    # whole loop forever (2026-08-29 incident: proc.wait()
+                    # here had no timeout, so a non-responsive rtl_433 froze
+                    # the entire manager - no further restarts, no further
+                    # log lines - for 22+ hours until manually restarted).
+                    proc.kill()
+                    proc.wait()
                 proc.stdout.close()
                 with self._lock:
                     self._proc = None

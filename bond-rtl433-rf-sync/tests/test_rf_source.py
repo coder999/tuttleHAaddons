@@ -360,6 +360,55 @@ def test_lines_stop_returns_promptly_during_long_stale_wait():
     assert elapsed < 5.0  # nowhere near the 30s stale timeout
 
 
+def test_lines_recovers_when_process_ignores_sigterm():
+    """Root-cause regression test for the real 2026-08-29 incident: the
+    stale-timeout path called proc.terminate() then proc.wait() with no
+    timeout. A real rtl_433 blocked on a dead rtl_tcp connection didn't
+    die from SIGTERM, so proc.wait() blocked forever - freezing the whole
+    manager (no further restarts, no further log lines) for 22+ hours
+    until manually restarted, while the pi kept streaming into a socket
+    nobody was reading. This drives a fake process that ignores SIGTERM
+    entirely and proves the manager still recovers (kills it and spawns a
+    fresh one) instead of hanging forever."""
+    manager = RFSourceManager(
+        _config(rtl433_source="local"),
+        restart_backoff_seconds=0.01,
+        stale_timeout_seconds=0.05,
+        terminate_timeout_seconds=0.2,
+        command=[
+            "python3",
+            "-c",
+            "import signal, time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "print('line1', flush=True); "
+            "time.sleep(30)",
+        ],
+    )
+
+    result = {"lines": None}
+
+    def collect():
+        lines = []
+        for line in manager.lines():
+            lines.append(line)
+            if len(lines) == 2:
+                manager.stop()
+                break
+        result["lines"] = lines
+
+    thread = threading.Thread(target=collect, daemon=True)
+    start = time.monotonic()
+    thread.start()
+    thread.join(timeout=5.0)
+    elapsed = time.monotonic() - start
+
+    assert not thread.is_alive(), "manager.lines() hung instead of recovering"
+    assert elapsed < 5.0
+    # First "line1" from the original (SIGTERM-ignoring) process; the
+    # manager kills it and starts a fresh one, which prints "line1" again.
+    assert result["lines"] == ["line1", "line1"]
+
+
 def test_lines_retries_after_popen_raises_on_spawn(monkeypatch):
     manager = RFSourceManager(
         _config(),
