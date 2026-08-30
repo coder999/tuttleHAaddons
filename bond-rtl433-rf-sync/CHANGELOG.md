@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.0.9
+
+- **Fixed a build-time regression: the floating `python:3.12-slim` base
+  image tag silently rolled from Debian bookworm to trixie, which bumped
+  apt's `rtl-433` package from 22.11 to 25.02.** Every connection to the
+  pi's `rtl_tcp` then failed immediately with `[rtltcp_open] Bad rtl_tcp
+  header (-1)` — 25.02 sends a stricter rtl_tcp handshake than the pi's
+  old rtl-sdr 0.6.0-3 `rtl_tcp` server (from Debian oldoldstable, 2020-era)
+  understands. This wasn't caused by the 1.0.8 code change, just exposed
+  by it — rebuilding the image to ship that fix was the first rebuild
+  since the base image had drifted to trixie, so it silently picked up
+  the incompatible `rtl_433` along with it.
+
+  Confirmed live, 2026-08-30: user reported living-room and dining-room
+  wall-switch presses physically worked (lights responded) but never
+  showed up in Bond/Apple Home. Ruled out the pi first — `rtl-tcp.service`
+  was healthy, and manually running the *pi's own* `rtl_433` against its
+  local `rtl_tcp` worked fine. Reproduced the actual failure by building
+  the add-on's exact Dockerfile fresh (`python:3.12-slim` → `rtl_433
+  25.02`) and pointing it at the pi's real `rtl_tcp` — same "Bad rtl_tcp
+  header" error. Confirmed the fix the same way: rebuilding against
+  `python:3.12-slim-bookworm` (`rtl_433` 22.11) connected cleanly.
+
+  Along the way, also found and fixed two now-resolved but unrelated pi
+  issues from the same troubleshooting session: `rtl_tcp` had leaked to
+  2.3GB RSS from hours of connect/retry churn (fixed by `systemctl
+  restart rtl-tcp`), and the pi's xHCI USB controller had hit a known
+  Raspberry Pi bug (`xhci_hcd: Ring expansion failed`, `usb_submit_urb
+  returned -12`) that blocked the SDR dongle from opening at all (fixed
+  by rebooting the pi). Neither was the actual cause of this incident,
+  but both were real problems worth noting for future debugging.
+
+  **Fix:** pin the Dockerfile to `python:3.12-slim-bookworm` instead of
+  the floating `python:3.12-slim` tag, so a future base-image rebuild
+  can't silently break `rtl_433`/`rtl_tcp` compatibility the same way
+  again. No app-level test covers this - it's a build/infra pin, verified
+  by reproducing and then fixing the failure against the real pi as
+  described above, not by the pytest suite.
+
 ## 1.0.8
 
 - **Fixed a deadlock that could freeze the whole add-on silently: the
