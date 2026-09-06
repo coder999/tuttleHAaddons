@@ -1,0 +1,4 @@
+# Build context only needs app/ and run.sh -- keep test and cache noise out.
+__pycache__/
+.pytest_cache/
+tests/

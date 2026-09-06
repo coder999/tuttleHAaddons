@@ -1,7 +1,7 @@
 name: Console Agent
 slug: console_agent
 description: Pushes this host's CPU/RAM/disk and add-on state to console.marktuttle.dev every 30 s
-version: "0.1.0"
+version: "0.1.1"
 arch:
   - amd64
   - aarch64
