@@ -1,0 +1,21 @@
+name: Console Agent
+slug: console_agent
+description: Pushes this host's CPU/RAM/disk and add-on state to console.marktuttle.dev every 30 s
+version: "0.1.0"
+arch:
+  - amd64
+  - aarch64
+startup: services
+boot: auto
+hassio_api: true
+hassio_role: manager
+options:
+  ingest_url: "https://console.marktuttle.dev/api/ingest"
+  ingest_token: ""
+  interval_seconds: 30
+  addon_stats: true
+schema:
+  ingest_url: url
+  ingest_token: password
+  interval_seconds: int(10,600)
+  addon_stats: bool
