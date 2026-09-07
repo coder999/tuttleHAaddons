@@ -14,6 +14,7 @@ a plausible-looking wrong number on a dashboard.
 Never exits on a push failure: the console's SIGNAL LOST is the liveness
 signal. Only GET calls are made to the Supervisor.
 """
+import glob
 import json
 import os
 import sys
@@ -25,6 +26,30 @@ import requests
 SUPERVISOR = "http://supervisor"
 OPTIONS = "/data/options.json"
 DEFAULT_INGEST_URL = "https://console.marktuttle.dev/api/ingest"
+# Host thermal sensors are visible inside add-on containers on HAOS
+# generic-x86-64 (verified 2026-09-07: acpitz, x86_pkg_temp, iwlwifi zones and
+# a coretemp hwmon). Module-level so the tests can point them at a fake tree.
+THERMAL_GLOB = "/sys/class/thermal/thermal_zone*"
+HWMON_GLOB = "/sys/class/hwmon/hwmon*"
+
+
+def cpu_temp_c():
+    """CPU package temperature in °C (1 dp), or None when no CPU sensor is
+    visible. The x86_pkg_temp thermal zone first; else the coretemp hwmon's
+    temp1_input (the package reading on Intel). acpitz/iwlwifi are not the CPU."""
+    for z in sorted(glob.glob(THERMAL_GLOB)):
+        try:
+            if open(f"{z}/type").read().strip() == "x86_pkg_temp":
+                return round(int(open(f"{z}/temp").read()) / 1000.0, 1)
+        except (OSError, ValueError):
+            continue
+    for h in sorted(glob.glob(HWMON_GLOB)):
+        try:
+            if open(f"{h}/name").read().strip() == "coretemp":
+                return round(int(open(f"{h}/temp1_input").read()) / 1000.0, 1)
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 class Supervisor:
@@ -110,7 +135,7 @@ def build_snapshot(sup, addon_stats: bool = True, sample_seconds: float = 1.0) -
             # Namespaced counters would measure this container, not the host --
             # see the module docstring. Zero, not a wrong number.
             "net_rx_bps": 0, "net_tx_bps": 0,
-            "cpu_temp_c": None, "top_process": None, "uptime_s": max(0, uptime),
+            "cpu_temp_c": cpu_temp_c(), "top_process": None, "uptime_s": max(0, uptime),
         },
         "containers": sorted(containers, key=lambda c: c["name"].lower()),
         "timers": [], "failed_units": [], "heartbeats": [], "logs": {},

@@ -223,3 +223,36 @@ def test_unusable_options_file_exits_2(monkeypatch, tmp_path, capsys, content):
     assert main.main() == 2
     out = capsys.readouterr().out
     assert "cannot read" in out and "not starting" in out
+
+
+def test_cpu_temp_reads_the_package_sensor(tmp_path, monkeypatch):
+    # HAOS on generic-x86-64 exposes the host's thermal zones to add-on
+    # containers (verified 2026-09-07 from the SSH add-on): acpitz,
+    # x86_pkg_temp, iwlwifi. Only the CPU package counts.
+    for i, (typ, milli) in enumerate([("acpitz", "27800"), ("x86_pkg_temp", "44250"), ("iwlwifi_1", "59000")]):
+        z = tmp_path / "thermal" / f"thermal_zone{i}"
+        z.mkdir(parents=True)
+        (z / "type").write_text(typ + "\n")
+        (z / "temp").write_text(milli + "\n")
+    monkeypatch.setattr(main, "THERMAL_GLOB", str(tmp_path / "thermal" / "thermal_zone*"))
+    monkeypatch.setattr(main, "HWMON_GLOB", str(tmp_path / "nowhere" / "hwmon*"))
+    assert main.cpu_temp_c() == 44.2
+
+
+def test_cpu_temp_falls_back_to_coretemp_hwmon_then_none(tmp_path, monkeypatch):
+    h = tmp_path / "hwmon" / "hwmon1"
+    h.mkdir(parents=True)
+    (h / "name").write_text("coretemp\n")
+    (h / "temp1_input").write_text("51000\n")
+    monkeypatch.setattr(main, "THERMAL_GLOB", str(tmp_path / "nowhere" / "thermal_zone*"))
+    monkeypatch.setattr(main, "HWMON_GLOB", str(tmp_path / "hwmon" / "hwmon*"))
+    assert main.cpu_temp_c() == 51.0
+    (h / "name").write_text("acpitz\n")
+    assert main.cpu_temp_c() is None
+
+
+def test_snapshot_carries_the_temperature_and_validates(monkeypatch):
+    monkeypatch.setattr(main, "cpu_temp_c", lambda: 44.2)
+    doc = main.build_snapshot(FakeSupervisor(), addon_stats=True, sample_seconds=0.05)
+    validate(doc)
+    assert doc["metrics"]["cpu_temp_c"] == 44.2

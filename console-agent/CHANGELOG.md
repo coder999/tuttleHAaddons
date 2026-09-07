@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- **CPU temperature.** `cpu_temp_c` was hard-coded to `null`; the host's
+  `x86_pkg_temp` thermal zone (fallback: the `coretemp` hwmon) is visible to
+  add-on containers on HAOS generic-x86-64, so the snapshot now carries it
+  and the console shows it with the same mood label as the other hosts.
+
 ## 0.1.1
 
 - **Null-safety across the Supervisor payload.** `a.get("name", a["slug"])`
