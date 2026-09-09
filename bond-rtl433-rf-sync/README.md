@@ -1,9 +1,17 @@
 # Bond-rtl_433 RF Sync
 
-Corrects Bond Bridge's believed fan/light state from Ashby Park ceiling fan
-wall-switch RF presses, without transmitting anything to the physical
-devices — replaces an MQTT + Home-Assistant-automation pipeline with a
-single self-contained add-on.
+Corrects Bond Bridge's believed fan/light state from ceiling fan wall-switch
+RF presses, without transmitting anything to the physical devices — replaces
+an MQTT + Home-Assistant-automation pipeline with a single self-contained
+add-on. Developed against Ashby Park ceiling fans, but nothing is specific to
+them beyond the default `rtl433_frequency`.
+
+> **The shipped `bond_host`, `code_table` and `room_devices` are examples, not
+> working defaults.** They describe a made-up house so the shape of each option
+> is visible in the add-on's Configuration tab. `bond_host` defaults to
+> `192.0.2.10`, from RFC 5737's documentation range, so an unconfigured add-on
+> cannot reach a real device on your network. See
+> [Finding your own values](#finding-your-own-values).
 
 ## Configuration
 
@@ -62,14 +70,59 @@ single self-contained add-on.
   1-hour default then false-positived on nothing but normal overnight
   inactivity (2026-08-19), which is what prompted adding the liveness
   probe above as the real fix and loosening this to a pure fallback.
-- `code_table` — maps each switch's decoded RF `stable_id` to a room/button.
-- `room_devices` — maps each room to its Bond `device_id` and `max_speed`.
+- `code_table` — maps each switch's decoded RF `stable_id` (a hex string) to a
+  room/button. **Example values only; replace them.**
+- `room_devices` — maps each room to its Bond `device_id` and `max_speed`. The
+  `room` names must match the ones used in `code_table`. **Example values only;
+  replace them.**
 - `debounce_seconds` — quiet period (in seconds) after the last matching RF
   press before the corresponding Bond correction is sent, so repeated RF
   transmissions from a single physical button press coalesce into one call.
   Defaults to `3.0`.
 - `dry_run` — when true, logs the Bond call that would be made without
   sending it.
+
+### Finding your own values
+
+**`bond_host`** — the Bond Bridge's address on your LAN. Its IP is in the Bond
+app under Bridge settings, or on your router's client list.
+
+**`bond_token`** — the Bridge's Local Token, shown in the Bond app under
+Bridge settings → Advanced → Local Integrations. It is per-bridge; there is no
+account-wide token.
+
+**`room_devices[].bond_device_id`** — ask the Bridge for its own device list:
+
+```sh
+curl -s -H "BOND-Token: <your token>" http://<bond_host>/v2/devices
+```
+
+That returns an object keyed by device id (`{"ce4d...": {...}, ...}`). Fetch
+one to confirm which fan it is and read its speed count:
+
+```sh
+curl -s -H "BOND-Token: <your token>" http://<bond_host>/v2/devices/<device_id>
+```
+
+Use the device's `name` to match it to a room, and its
+`properties.max_speed` for `max_speed`.
+
+**`code_table[].stable_id`** — these come off the air, so discover them by
+pressing buttons. Start the add-on with `dry_run: true` and watch its log. Any
+transmission that matches nothing in `code_table` is logged as:
+
+```
+unmatched RF press: stable_id=1d9 counter=0 (add it to code_table to act on it)
+```
+
+Press one button on one switch, note the id, and repeat for each button in each
+room. Ids are logged and configured as lowercase hex with no `0x` prefix.
+Presses that *do* match are logged as `seen <room>/<button>` instead, which is
+how you confirm an entry is right.
+
+If nothing decodes at all, the frequency is the first thing to check —
+`rtl433_frequency` defaults to 304.25 MHz, which is what the fans this was
+built against use. Other brands commonly use 315 MHz or 433.92 MHz.
 
 ## Power button behavior
 

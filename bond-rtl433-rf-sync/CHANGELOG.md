@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.0
+
+- **The shipped defaults were one specific house.** `bond_host` was a real LAN
+  address and `code_table` / `room_devices` held real Bond device ids and RF
+  codes, so a fresh install pointed at hardware the new user does not own.
+  They are now clearly-labelled examples: `bond_host` defaults to `192.0.2.10`
+  from RFC 5737's documentation range, which cannot reach anything real, and
+  the tables describe an `example_room`. They stay non-empty because
+  `parse_config` rejects an empty `code_table` or `room_devices`.
+- **Unmatched RF presses are now logged with their `stable_id`.** They were
+  dropped silently, which made `code_table` impossible to fill in for anyone
+  who did not already know their switches' codes -- those ids exist nowhere but
+  the air. New `matcher.decode_only()` reports the id of a well-formed
+  transmission regardless of whether any entry claims it.
+- README gains a "Finding your own values" section covering the Bridge IP and
+  local token, `GET /v2/devices` for device ids and `max_speed`, and reading
+  stable_ids out of the log.
+
 ## 1.0.9
 
 - **Fixed a build-time regression: the floating `python:3.12-slim` base

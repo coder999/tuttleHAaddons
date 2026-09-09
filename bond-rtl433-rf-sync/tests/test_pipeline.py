@@ -172,3 +172,30 @@ def test_unknown_room_device_lookup_failure_is_logged_not_raised(tmp_path):
 
     assert event_log.recent_events()[0].result.startswith("error:")
     assert all(call[0] not in ("GET", "PATCH") for call in session.calls)
+
+
+def test_unmatched_press_is_logged_with_its_stable_id(caplog):
+    """Without this, a new user has no way to learn the stable_ids their own
+    switches send, and code_table cannot be filled in."""
+    import logging
+
+    from app import main as main_mod
+
+    class _Source:
+        def lines(self):
+            # stable_id 1d9, which _config()'s table maps to livingroom/power;
+            # the table here deliberately does not contain it.
+            return iter(["codes     : {25}3b20"])
+
+    class _Debouncer:
+        def see(self, event):                      # pragma: no cover - not reached
+            raise AssertionError("unmatched line must not reach the debouncer")
+
+    config = _config()
+    config = Config(**{**config.__dict__,
+                       "code_table": (CodeTableEntry(room="other", button="power",
+                                                     stable_id=0x2FF),)})
+    with caplog.at_level(logging.INFO, logger="bond-rtl433-rf-sync"):
+        main_mod.run_pipeline(config, _Source(), _Debouncer())
+
+    assert "stable_id=1d9" in caplog.text

@@ -1,7 +1,7 @@
 name: Bond-rtl_433 RF Sync
 slug: bond_rtl433_rf_sync
 description: Corrects Bond Bridge's believed fan/light state from wall-switch RF presses, without transmitting anything
-version: "1.0.9"
+version: "1.1.0"
 arch:
   - amd64
   - aarch64
@@ -11,7 +11,7 @@ usb: true
 map:
   - data:rw
 options:
-  bond_host: "192.168.0.110"
+  bond_host: "192.0.2.10"
   bond_token: ""
   rtl433_source: "local"
   rtl433_source_host: ""
@@ -24,43 +24,24 @@ options:
   rtl433_liveness_probe_timeout_seconds: 10.0
   debounce_seconds: 3.0
   dry_run: false
+  # The values below are EXAMPLES, not working defaults -- they describe a
+  # made-up house so the shape of each option is visible in the UI. Replace
+  # every one of them; see "Finding your own values" in README.md.
+  # 192.0.2.10 is from RFC 5737's documentation range, so an unconfigured
+  # add-on cannot reach a real device on your network.
   code_table:
-    - room: livingroom
+    - room: example_room
       button: speed
-      stable_id: "1ff"
-    - room: livingroom
+      stable_id: "aaa"
+    - room: example_room
       button: light
-      stable_id: "1f9"
-    - room: livingroom
+      stable_id: "aab"
+    - room: example_room
       button: power
-      stable_id: "1d9"
-    - room: diningroom
-      button: speed
-      stable_id: "27f"
-    - room: diningroom
-      button: light
-      stable_id: "279"
-    - room: diningroom
-      button: power
-      stable_id: "259"
-    - room: bedroom
-      button: speed
-      stable_id: "2ff"
-    - room: bedroom
-      button: light
-      stable_id: "2f9"
-    - room: bedroom
-      button: power
-      stable_id: "2d9"
+      stable_id: "aac"
   room_devices:
-    - room: livingroom
-      bond_device_id: "ce4d90389da6937f"
-      max_speed: 3
-    - room: diningroom
-      bond_device_id: "33c72108a1a2548d"
-      max_speed: 3
-    - room: bedroom
-      bond_device_id: "3e9252a7323111d2"
+    - room: example_room
+      bond_device_id: "0000000000000000"
       max_speed: 3
 schema:
   bond_host: str

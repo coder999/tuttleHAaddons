@@ -16,7 +16,7 @@ from app.config import Config, load_config
 from app.debouncer import Debouncer
 from app.event_log import EventLog
 from app.last_speed_store import LastSpeedStore
-from app.matcher import MatchedEvent, match_line
+from app.matcher import MatchedEvent, decode_only, match_line
 from app.rf_source import RFSourceManager
 from app.web import create_app
 
@@ -93,6 +93,13 @@ def run_pipeline(config: Config, rf_source: RFSourceManager, debouncer: Debounce
     for line in rf_source.lines():
         event = match_line(line, config.code_table)
         if event is None:
+            # An unmatched but well-formed transmission is how you discover
+            # your own switches' stable_ids -- there is no other source for
+            # them -- so it is logged rather than dropped silently.
+            decoded = decode_only(line)
+            if decoded is not None:
+                log.info("unmatched RF press: stable_id=%s counter=%s "
+                         "(add it to code_table to act on it)", *decoded)
             continue
         log.info("seen %s/%s percentage=%s", event.room, event.button, event.percentage)
         debouncer.see(event)

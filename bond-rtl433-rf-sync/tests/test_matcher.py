@@ -1,3 +1,4 @@
+from app import matcher
 from app.config import CodeTableEntry
 from app.matcher import MatchedEvent, decode_hex, match_line
 
@@ -46,3 +47,17 @@ def test_match_line_unknown_stable_id_returns_none():
 def test_match_line_non_matching_format_returns_none():
     assert match_line("some unrelated rtl_433 output", CODE_TABLE) is None
     assert match_line("", CODE_TABLE) is None
+
+
+def test_decode_only_reports_the_stable_id_of_an_unmatched_transmission():
+    """A user configuring this add-on has no other way to learn their switches'
+    stable_ids: an unmatched press is invisible to match_line by design, so
+    decode_only() is what lets the pipeline log it for them to copy."""
+    line = "codes     : {25}3ff8"
+    assert match_line(line, ()) is None
+    stable_id, counter = matcher.decode_only(line)
+    assert stable_id == "1ff" and counter == 3
+
+
+def test_decode_only_returns_none_for_a_line_that_is_not_an_rf_code():
+    assert matcher.decode_only("rtl_433 version 21.12") is None
