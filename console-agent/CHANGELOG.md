@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.0
+
+- **The target console is now entirely configurable.** `host` was hard-coded to
+  `"ha"` in the snapshot, and `ingest_url` defaulted to one specific
+  deployment, so nobody but the original author could use this add-on: a
+  console binds each ingest token to one host id, so a fixed id makes every
+  push fail no matter what URL you set. `host_id` is a new option, and the
+  `User-Agent` no longer carries the same fixed id.
+- **`ingest_url` now defaults to an unusable placeholder**
+  (`https://console.example.com/api/ingest`; `example.com` is reserved by
+  RFC 2606 and cannot resolve). The add-on idles until you change it, so a
+  fresh install can never post this host's metrics to somebody else's server.
+- **The test suite runs without a console checkout.** The contract schema was
+  read at module scope from one hard-coded path, so a missing file failed
+  collection and took the 19 tests that need no schema down with it. The four
+  contract tests now skip unless `CONSOLE_SCHEMA` points at a schema, and they
+  take the host id from that schema's own `host` enum rather than assuming one.
+- Documentation rewritten with no reference to a particular deployment.
+
 ## 0.1.2
 
 - **CPU temperature.** `cpu_temp_c` was hard-coded to `null`; the host's

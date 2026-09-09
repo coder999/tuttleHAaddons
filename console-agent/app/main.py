@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Console Agent: push this HAOS host's state to console.marktuttle.dev.
+"""Console Agent: push this HAOS host's state to a console ingest endpoint.
+
+The endpoint is yours to choose: set `ingest_url`, `ingest_token` and
+`host_id` in the add-on's Configuration tab. Nothing here is tied to a
+particular console deployment.
 
 Host CPU/RAM come from /proc via psutil -- inside a container those files
 describe the HOST, so no API is needed for the two numbers that matter most.
@@ -25,7 +29,13 @@ import requests
 
 SUPERVISOR = "http://supervisor"
 OPTIONS = "/data/options.json"
-DEFAULT_INGEST_URL = "https://console.marktuttle.dev/api/ingest"
+# Placeholder, not a working endpoint: example.com is reserved by RFC 2606 and
+# can never resolve to a real console, so an unconfigured add-on cannot post
+# this host's metrics to somebody else's server.
+DEFAULT_INGEST_URL = "https://console.example.com/api/ingest"
+# The console identifies hosts by this id and binds each ingest token to one,
+# so it must match the id the token was issued for or the push is rejected.
+DEFAULT_HOST_ID = "homeassistant"
 # Host thermal sensors are visible inside add-on containers on HAOS
 # generic-x86-64 (verified 2026-09-07: acpitz, x86_pkg_temp, iwlwifi zones and
 # a coretemp hwmon). Module-level so the tests can point them at a fake tree.
@@ -92,7 +102,8 @@ def _safe(fn, default):
         return default
 
 
-def build_snapshot(sup, addon_stats: bool = True, sample_seconds: float = 1.0) -> dict:
+def build_snapshot(sup, addon_stats: bool = True, sample_seconds: float = 1.0,
+                   host_id: str = DEFAULT_HOST_ID) -> dict:
     cpu = psutil.cpu_percent(interval=sample_seconds)
     vm, sw = psutil.virtual_memory(), psutil.swap_memory()
     host = _safe(sup.host_info, {})
@@ -122,7 +133,7 @@ def build_snapshot(sup, addon_stats: bool = True, sample_seconds: float = 1.0) -
                 c["mem_mb"] = round(float(st.get("memory_usage") or 0) / 2**20)
         containers.append(c)
     return {
-        "schema": 1, "host": "ha",
+        "schema": 1, "host": host_id,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "kernel": kernel or "unknown",
         "metrics": {
@@ -142,11 +153,15 @@ def build_snapshot(sup, addon_stats: bool = True, sample_seconds: float = 1.0) -
     }
 
 
-def push(url: str, token: str, body: bytes) -> None:
+def push(url: str, token: str, body: bytes, host_id: str = DEFAULT_HOST_ID) -> None:
     try:
         r = requests.post(url, data=body, timeout=10,
                           headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                                   "User-Agent": "console-agent/0.1 (ha)"})
+                                   # No version here on purpose: the only
+                                   # version of record is config.yaml, and a
+                                   # copy in this file would drift from it
+                                   # silently.
+                                   "User-Agent": f"console-agent ({host_id})"})
         if r.status_code == 204:
             print(f"console-agent: 204 ({len(body)} bytes)", flush=True)
         else:
@@ -180,18 +195,23 @@ def main() -> int:
     if not ingest_token:
         print("console-agent: ingest_token option is empty; set it in the add-on configuration. Idling.", flush=True)
     ingest_url = opts.get("ingest_url") or DEFAULT_INGEST_URL
+    host_id = (opts.get("host_id") or "").strip() or DEFAULT_HOST_ID
+    if ingest_url == DEFAULT_INGEST_URL:
+        print("console-agent: ingest_url is still the example placeholder; "
+              "set it to your own console in the add-on configuration. Idling.", flush=True)
     sup = Supervisor(token)
     interval = int(opts.get("interval_seconds", 30))
     while True:
         started = time.time()
-        if ingest_token:
+        if ingest_token and ingest_url != DEFAULT_INGEST_URL:
             # A bug in build_snapshot must not become a Supervisor restart loop:
             # one log line per interval is far easier to diagnose than a
             # container that keeps dying before its own log can be read.
             try:
-                body = json.dumps(build_snapshot(sup, bool(opts.get("addon_stats", True))),
+                body = json.dumps(build_snapshot(sup, bool(opts.get("addon_stats", True)),
+                                                 host_id=host_id),
                                   separators=(",", ":")).encode()
-                push(ingest_url, ingest_token, body)
+                push(ingest_url, ingest_token, body, host_id)
             except Exception as e:            # noqa: BLE001 -- degrade, never crash
                 print(f"console-agent: snapshot failed: {e!r}", flush=True)
         time.sleep(max(1.0, interval - (time.time() - started)))

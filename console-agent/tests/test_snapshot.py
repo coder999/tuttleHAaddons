@@ -3,9 +3,10 @@
 CONSOLE_SCHEMA points at the live schema in the console working copy rather
 than a copy vendored here on purpose: a copy could not notice the console
 changing underneath us. Nothing runs these tests automatically, so this
-validates against the console checkout's contract only when someone runs
-pytest on nexus. If the file moves, set CONSOLE_SCHEMA rather than
-snapshotting the schema into this repo.
+validates against the console checkout's contract when someone runs pytest
+next to one. If the file moves, or if you run these tests without a console
+checkout, set CONSOLE_SCHEMA rather than snapshotting the schema into this
+repo; without it the contract tests skip and the rest of the suite still runs.
 """
 import json
 import os
@@ -17,18 +18,46 @@ import pytest
 from app import main
 from tests.fake_supervisor import FakeSupervisor
 
-SCHEMA = json.loads(pathlib.Path(os.environ.get("CONSOLE_SCHEMA", os.path.expanduser(
-    "~/docker/html-local/console/htdocs/contract/snapshot.schema.json"))).read_text())
+SCHEMA_PATH = pathlib.Path(os.environ.get("CONSOLE_SCHEMA", os.path.expanduser(
+    "~/docker/html-local/console/htdocs/contract/snapshot.schema.json")))
+# Loaded lazily and guarded: at module scope a missing file made the whole
+# suite error during collection, so anyone without a console checkout could
+# not run even the tests that need no schema.
+SCHEMA = json.loads(SCHEMA_PATH.read_text()) if SCHEMA_PATH.is_file() else None
+needs_schema = pytest.mark.skipif(
+    SCHEMA is None, reason=f"no console contract at {SCHEMA_PATH}; set CONSOLE_SCHEMA")
 
 
 def validate(doc):
     jsonschema.Draft202012Validator(SCHEMA).validate(doc)
 
 
+def _contract_host_id():
+    """A console may pin `host` to an enum of the hosts it knows about, which
+    the add-on's generic default is legitimately not a member of. Take an id
+    the contract accepts so these tests check the snapshot's shape rather than
+    whose console it was written for."""
+    enum = (SCHEMA or {}).get("properties", {}).get("host", {}).get("enum")
+    return enum[0] if enum else main.DEFAULT_HOST_ID
+
+
+CONTRACT_HOST_ID = _contract_host_id()
+
+
+@needs_schema
 def test_snapshot_validates_against_contract():
-    doc = main.build_snapshot(FakeSupervisor(), addon_stats=True, sample_seconds=0.05)
+    doc = main.build_snapshot(FakeSupervisor(), addon_stats=True, sample_seconds=0.05,
+                              host_id=CONTRACT_HOST_ID)
     validate(doc)
-    assert doc["host"] == "ha" and doc["logs"] == {} and doc["timers"] == []
+    assert doc["host"] == CONTRACT_HOST_ID and doc["logs"] == {} and doc["timers"] == []
+
+
+def test_host_id_comes_from_the_option():
+    """The console binds each ingest token to one host id, so a wrong or
+    unconfigurable id makes every push 422 for anyone but the original author."""
+    doc = main.build_snapshot(FakeSupervisor(), addon_stats=False, sample_seconds=0.05,
+                              host_id="my-house")
+    assert doc["host"] == "my-house"
 
 
 def test_metrics_shape_and_ranges():
@@ -81,9 +110,11 @@ def test_kernel_string_carries_versions():
         == "6.18.39-haos · HAOS 18.2 · Core 2026.9.1"
 
 
+@needs_schema
 def test_supervisor_failure_degrades_not_raises():
     sup = FakeSupervisor(fail=True)
-    doc = main.build_snapshot(sup, addon_stats=True, sample_seconds=0.05)
+    doc = main.build_snapshot(sup, addon_stats=True, sample_seconds=0.05,
+                              host_id=CONTRACT_HOST_ID)
     validate(doc)
     assert doc["containers"] == [] and doc["metrics"]["disk_root_total_gb"] == 0
 
@@ -166,8 +197,10 @@ class _RaggedSupervisor:
         raise AssertionError("neither add-on is started; stats must not be requested")
 
 
+@needs_schema
 def test_ragged_supervisor_payload_degrades_instead_of_crashing():
-    doc = main.build_snapshot(_RaggedSupervisor(), addon_stats=True, sample_seconds=0.05)
+    doc = main.build_snapshot(_RaggedSupervisor(), addon_stats=True, sample_seconds=0.05,
+                              host_id=CONTRACT_HOST_ID)
     validate(doc)
     st = {c["status"].split(" · ")[-1]: c["status"] for c in doc["containers"]}
     assert st["no_version"] == "unknown · no_version"      # empty version -> no "v…" segment
@@ -251,8 +284,10 @@ def test_cpu_temp_falls_back_to_coretemp_hwmon_then_none(tmp_path, monkeypatch):
     assert main.cpu_temp_c() is None
 
 
+@needs_schema
 def test_snapshot_carries_the_temperature_and_validates(monkeypatch):
     monkeypatch.setattr(main, "cpu_temp_c", lambda: 44.2)
-    doc = main.build_snapshot(FakeSupervisor(), addon_stats=True, sample_seconds=0.05)
+    doc = main.build_snapshot(FakeSupervisor(), addon_stats=True, sample_seconds=0.05,
+                              host_id=CONTRACT_HOST_ID)
     validate(doc)
     assert doc["metrics"]["cpu_temp_c"] == 44.2
