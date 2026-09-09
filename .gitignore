@@ -1,1 +1,8 @@
 .worktrees/
+.playwright-mcp/
+
+# Python build artefacts: machine- and interpreter-version-specific, never
+# useful to anyone cloning this repo.
+__pycache__/
+*.py[cod]
+.pytest_cache/
