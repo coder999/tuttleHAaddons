@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#212b3a"/>
+      <stop offset="1" stop-color="#141a24"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="128" height="128" rx="26" fill="url(#bg)"/>
+
+  <!-- Gauge: the host's load. Track first, then the filled portion. Stroke
+       widths are deliberately heavy: this is read at 32px in the HA sidebar;
+       thinner strokes turned to mush in testing. -->
+  <path d="M 26 82 A 38 38 0 1 1 102 82" fill="none" stroke="#38445a"
+        stroke-width="12" stroke-linecap="round"/>
+  <path d="M 26 82 A 38 38 0 0 1 76 46" fill="none" stroke="#2dd4bf"
+        stroke-width="12" stroke-linecap="round"/>
+
+  <!-- Needle, in the same amber the bond add-on uses for the physical device -->
+  <path d="M 64 82 L 86 48" stroke="#f5a623" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="64" cy="82" r="9" fill="#141a24" stroke="#f5a623" stroke-width="5"/>
+
+  <!-- Heartbeat: the every-30s push. -->
+  <path d="M 30 104 L 50 104 L 57 92 L 66 116 L 74 104 L 98 104" fill="none"
+        stroke="#2dd4bf" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
