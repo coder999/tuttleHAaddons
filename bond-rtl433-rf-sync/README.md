@@ -79,8 +79,20 @@ them beyond the default `rtl433_frequency`.
   press before the corresponding Bond correction is sent, so repeated RF
   transmissions from a single physical button press coalesce into one call.
   Defaults to `3.0`.
+- `burst_gap_seconds` — silence (in seconds) that marks the end of one
+  physical press on a *toggle* button (`light`, `power`). Repeats within a
+  single press are ~60ms apart and span at most ~0.8s, while distinct presses
+  are seconds apart, so each burst becomes exactly one toggle. Defaults to
+  `0.5`. Raising this towards `debounce_seconds` reintroduces press-count loss:
+  two presses inside one quiet period collapse into a single correction and
+  leave Bond's belief inverted.
+- `bond_echo_ttl_seconds` — how long an expected-echo token stays valid.
+  Defaults to `debounce_seconds + 3.0`. Too short and a real echo outlives its
+  token and gets "corrected"; too long and a token left behind by a
+  transmission that was never decoded can suppress a later genuine press.
 - `dry_run` — when true, logs the Bond call that would be made without
-  sending it.
+  sending it. Echo suppression still runs, so a dry run exercises the same
+  decision path the live add-on will take.
 
 ### Finding your own values
 
@@ -123,6 +135,24 @@ how you confirm an entry is right.
 If nothing decodes at all, the frequency is the first thing to check —
 `rtl433_frequency` defaults to 304.25 MHz, which is what the fans this was
 built against use. Other brands commonly use 315 MHz or 433.92 MHz.
+
+## Why it ignores some presses it hears
+
+The Bond Bridge transmits the *same* RF codes the wall switches do, so its own
+transmissions are indistinguishable from a button press on the air. Left alone,
+the add-on "corrects" state in response to them and inverts whatever Bond just
+set — an echo feedback loop.
+
+To tell them apart, the add-on subscribes to the Bridge's push protocol (BPUP,
+UDP port 30007) and takes one single-use token per transmission the Bridge
+announces. A decode that finds a matching token is its own echo and is skipped,
+logged as `ignored (bond self-TX echo)`; a decode that finds none is a real
+press and is corrected.
+
+Tokens are counted, not timed, so a genuine press moments after a Home
+Assistant command is still honoured — a blanket "ignore everything for N
+seconds" would swallow it. Belief-only state writes emit no `/actions/` push,
+so the add-on's own corrections never produce tokens.
 
 ## Power button behavior
 

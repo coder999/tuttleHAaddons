@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.2.0
+
+- **Fixed an RF echo feedback loop: the add-on was "correcting" the Bond
+  Bridge's own transmissions.** The SDR hears the Bridge TX (Bond transmits at
+  304.3 MHz; the receive window is 304.25 MHz ± 1.024 MHz, so it sits well
+  inside) and the decoded code is byte-identical to a wall-switch press —
+  because it *is* the same code. Every HA light command was therefore followed
+  ~4s later by a correction that inverted the value Bond had just set.
+  Reproduced with nobody in the house and no switch touched: six direct Bond
+  API commands produced six matching "seen … corrected" pairs.
+
+  The add-on now subscribes to the Bridge's push protocol (BPUP, UDP port
+  30007) and enqueues one single-use "expected echo" token per announced
+  transmission; a decode that finds a matching unexpired token is skipped and
+  logged as `ignored (bond self-TX echo)`. This is a token *queue*, not a time
+  window, on purpose — a window covering "the next N seconds after a command"
+  would also swallow a genuine wall-switch press landing inside it, which is
+  common (command the light from HA, walk over, press the switch). Belief-only
+  `PATCH /v2/devices/<id>/state` writes emit no `/actions/` push, so the
+  add-on's own corrections cannot be mistaken for transmissions.
+
+  New options `bond_echo_ttl_seconds` (default `debounce_seconds + 3.0`).
+
+- **Fixed press-count loss on the toggle buttons.** The debouncer was
+  trailing-edge with a timer reset on every repeat, so N genuine presses inside
+  `debounce_seconds` (3.0) collapsed into ONE correction: the bulb toggled N
+  times, Bond's belief toggled once, and Bond stayed inverted from then on.
+  Unbounded — five rapid presses still yielded one toggle.
+
+  The quiet period is now per-button. `light` and `power` use a new short
+  `burst_gap_seconds` (default `0.5`), which segments the stream into bursts:
+  repeats within one press are ~60ms apart and span ≤0.8s, while distinct
+  presses are seconds apart, so each burst is exactly one press and gets
+  exactly one toggle. `speed` keeps the long `debounce_seconds`, because its
+  correction body is absolute (`{"power":1,"speed":N}`) and coalescing repeats
+  there is correct and saves needless API calls.
+
+  New option `burst_gap_seconds` (default `0.5`).
+
+- **`power` was vulnerable to both bugs too, not just `light`.**
+  `build_power_toggle_body` is a believed-state flip, structurally identical to
+  the light path — only `build_speed_event_body` is genuinely idempotent. The
+  echo loop does not currently *reach* power on this hardware (the Bridge's
+  `TurnOn`/`TurnOff` transmit the fan's speed code, and the power code has
+  never appeared in the log), but press-count loss did apply to real power
+  presses. Both fixes cover it.
+
+  Note for anyone extending `ACTION_TO_BUTTON`: the button a Bond action
+  *decodes* as is not always the one its name implies — `TurnOn`/`TurnOff`
+  decode as `speed` here. The mapping must stay in the decoder's vocabulary or
+  the token is filed under a key nothing consumes and suppression silently
+  does nothing.
+
 ## 1.1.0
 
 - **The shipped defaults were one specific house.** `bond_host` was a real LAN

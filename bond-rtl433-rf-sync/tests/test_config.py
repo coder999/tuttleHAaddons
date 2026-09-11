@@ -173,3 +173,50 @@ def test_device_for_room_missing_raises():
     cfg = parse_config(_base_raw())
     with pytest.raises(ValueError, match="diningroom"):
         cfg.device_for_room("diningroom")
+
+
+def test_burst_gap_and_echo_ttl_defaults():
+    cfg = parse_config(_base_raw())
+    assert cfg.burst_gap_seconds == 0.5
+    # Default is debounce + 3.0: long enough to cover one burst plus the gap
+    # that ends it, so a real echo never outlives its token.
+    assert cfg.bond_echo_ttl_seconds == cfg.debounce_seconds + 3.0
+
+
+def test_echo_ttl_default_tracks_a_custom_debounce():
+    raw = _base_raw()
+    raw["debounce_seconds"] = 10.0
+    assert parse_config(raw).bond_echo_ttl_seconds == 13.0
+
+
+def test_explicit_burst_gap_and_echo_ttl_are_honoured():
+    raw = _base_raw()
+    raw["burst_gap_seconds"] = 0.75
+    raw["bond_echo_ttl_seconds"] = 4.0
+    cfg = parse_config(raw)
+    assert cfg.burst_gap_seconds == 0.75
+    assert cfg.bond_echo_ttl_seconds == 4.0
+
+
+@pytest.mark.parametrize("value", [0, -1.5])
+def test_non_positive_burst_gap_raises(value):
+    raw = _base_raw()
+    raw["burst_gap_seconds"] = value
+    with pytest.raises(ConfigError, match="burst_gap_seconds"):
+        parse_config(raw)
+
+
+@pytest.mark.parametrize("value", [0, -1.0])
+def test_non_positive_echo_ttl_raises(value):
+    raw = _base_raw()
+    raw["bond_echo_ttl_seconds"] = value
+    with pytest.raises(ConfigError, match="bond_echo_ttl_seconds"):
+        parse_config(raw)
+
+
+@pytest.mark.parametrize("value", [0, -2.0])
+def test_non_positive_debounce_raises(value):
+    raw = _base_raw()
+    raw["debounce_seconds"] = value
+    with pytest.raises(ConfigError, match="debounce_seconds"):
+        parse_config(raw)

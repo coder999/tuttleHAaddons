@@ -40,6 +40,9 @@ class Config:
     dry_run: bool
     code_table: tuple[CodeTableEntry, ...]
     room_devices: tuple[RoomDevice, ...]
+    # Defaulted so a Config built before these options existed still constructs.
+    burst_gap_seconds: float = 0.5
+    bond_echo_ttl_seconds: float = 6.0
 
     def device_for_room(self, room: str) -> RoomDevice:
         for d in self.room_devices:
@@ -113,6 +116,29 @@ def parse_config(raw: dict) -> Config:
             f"{rtl433_liveness_probe_timeout_seconds!r}"
         )
 
+    debounce_seconds = float(raw.get("debounce_seconds", 3.0))
+    if debounce_seconds <= 0:
+        raise ConfigError(f"debounce_seconds must be > 0, got {debounce_seconds!r}")
+
+    burst_gap_seconds = float(raw.get("burst_gap_seconds", 0.5))
+    if burst_gap_seconds <= 0:
+        raise ConfigError(
+            f"burst_gap_seconds must be > 0, got {burst_gap_seconds!r} - it is the "
+            "silence that separates one physical press from the next, and zero "
+            "would split a single press's ~60ms repeats into one toggle each"
+        )
+
+    # Default per the fix design: comfortably longer than the worst-case time
+    # from "bridge announces a transmission" to "we finish decoding its echo",
+    # which is one burst (<=0.8s) plus burst_gap_seconds. Too short and a real
+    # echo outlives its token and gets "corrected"; too long and a token left
+    # behind by an undecoded transmission can eat a genuine press.
+    bond_echo_ttl_seconds = float(raw.get("bond_echo_ttl_seconds", debounce_seconds + 3.0))
+    if bond_echo_ttl_seconds <= 0:
+        raise ConfigError(
+            f"bond_echo_ttl_seconds must be > 0, got {bond_echo_ttl_seconds!r}"
+        )
+
     rooms_with_devices = {d.room for d in room_devices}
     rooms_in_code_table = {e.room for e in code_table}
     orphaned = rooms_in_code_table - rooms_with_devices
@@ -133,8 +159,10 @@ def parse_config(raw: dict) -> Config:
         rtl433_stale_timeout_seconds=rtl433_stale_timeout_seconds,
         rtl433_liveness_probe_interval_seconds=rtl433_liveness_probe_interval_seconds,
         rtl433_liveness_probe_timeout_seconds=rtl433_liveness_probe_timeout_seconds,
-        debounce_seconds=float(raw.get("debounce_seconds", 3.0)),
+        debounce_seconds=debounce_seconds,
         dry_run=bool(raw.get("dry_run", False)),
         code_table=code_table,
         room_devices=room_devices,
+        burst_gap_seconds=burst_gap_seconds,
+        bond_echo_ttl_seconds=bond_echo_ttl_seconds,
     )

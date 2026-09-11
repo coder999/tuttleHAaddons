@@ -12,8 +12,9 @@ from app.bond_client import (
     build_power_toggle_body,
     build_speed_event_body,
 )
+from app.bond_echo import BPUPListener, EchoTokenQueue
 from app.config import Config, load_config
-from app.debouncer import Debouncer
+from app.debouncer import TOGGLE_BUTTONS, Debouncer
 from app.event_log import EventLog
 from app.last_speed_store import LastSpeedStore
 from app.matcher import MatchedEvent, decode_only, match_line
@@ -38,15 +39,31 @@ class Pipeline:
         bond_client: BondClient,
         last_speed_store: LastSpeedStore,
         event_log: EventLog,
+        echo_tokens: EchoTokenQueue | None = None,
     ):
         self._config = config
         self._bond = bond_client
         self._last_speed = last_speed_store
         self._event_log = event_log
+        # An empty queue never consumes, so omitting it disables echo
+        # suppression rather than requiring every caller to build one.
+        self._echo_tokens = echo_tokens or EchoTokenQueue(0.0)
 
     def handle_event(self, event: MatchedEvent) -> None:
         try:
             device = self._config.device_for_room(event.room)
+            # Before correcting anything, ask whether this transmission was
+            # ours. The Bond Bridge's own TX is byte-identical to a wall
+            # switch press -- it IS the same code -- so the only way to tell
+            # them apart is that the bridge told us in advance it was about
+            # to transmit. Checked even under dry_run, so a dry run exercises
+            # the real decision path rather than a different one.
+            if self._echo_tokens.consume(device.bond_device_id, event.button):
+                log.info("ignored %s/%s (bond self-TX echo)", event.room, event.button)
+                self._event_log.record(
+                    event.room, event.button, event.percentage, {}, "ignored (bond self-TX echo)"
+                )
+                return
             if event.button == "speed":
                 assert event.percentage is not None
                 body = build_speed_event_body(event, device)
@@ -105,7 +122,9 @@ def run_pipeline(config: Config, rf_source: RFSourceManager, debouncer: Debounce
         debouncer.see(event)
 
 
-def _install_shutdown_handler(rf_source: RFSourceManager) -> None:
+def _install_shutdown_handler(
+    rf_source: RFSourceManager, bpup_listener: BPUPListener | None = None
+) -> None:
     """Ensures rf_source.stop() (which terminates the rtl_433 child process)
     runs on SIGTERM (docker stop / Supervisor restart) or SIGINT (Ctrl-C
     during manual/local testing), so the SDR dongle isn't left held by an
@@ -113,6 +132,8 @@ def _install_shutdown_handler(rf_source: RFSourceManager) -> None:
 
     def _handle_shutdown(signum, frame):
         log.info("received signal %s, shutting down", signum)
+        if bpup_listener is not None:
+            bpup_listener.stop()
         rf_source.stop()
         sys.exit(0)
 
@@ -125,15 +146,25 @@ def main() -> int:
     bond_client = BondClient(config.bond_host, config.bond_token)
     last_speed_store = LastSpeedStore(LAST_SPEED_PATH)
     event_log = EventLog()
-    pipeline = Pipeline(config, bond_client, last_speed_store, event_log)
-    debouncer = Debouncer(config.debounce_seconds, pipeline.handle_event)
+    echo_tokens = EchoTokenQueue(config.bond_echo_ttl_seconds)
+    bpup_listener = BPUPListener(config.bond_host, echo_tokens)
+    pipeline = Pipeline(config, bond_client, last_speed_store, event_log, echo_tokens)
+    # Toggle buttons get the short burst gap so each physical press produces
+    # its own correction; speed keeps the long debounce because its body is
+    # absolute and coalescing repeats is the desired behaviour there.
+    debouncer = Debouncer(
+        config.debounce_seconds,
+        pipeline.handle_event,
+        quiet_seconds_by_button={b: config.burst_gap_seconds for b in TOGGLE_BUTTONS},
+    )
     rf_source = RFSourceManager(
         config,
         stale_timeout_seconds=config.rtl433_stale_timeout_seconds,
         liveness_probe_interval_seconds=config.rtl433_liveness_probe_interval_seconds,
         liveness_probe_timeout_seconds=config.rtl433_liveness_probe_timeout_seconds,
     )
-    _install_shutdown_handler(rf_source)
+    _install_shutdown_handler(rf_source, bpup_listener)
+    bpup_listener.start()
 
     pipeline_thread = threading.Thread(
         target=run_pipeline, args=(config, rf_source, debouncer), daemon=True

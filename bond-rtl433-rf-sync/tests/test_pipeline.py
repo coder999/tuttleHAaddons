@@ -199,3 +199,88 @@ def test_unmatched_press_is_logged_with_its_stable_id(caplog):
         main_mod.run_pipeline(config, _Source(), _Debouncer())
 
     assert "stable_id=1d9" in caplog.text
+
+
+# --- echo suppression -------------------------------------------------------
+
+LIVINGROOM_DEVICE = "ce4d90389da6937f"
+
+
+def _echo_pipeline(tmp_path, session, dry_run=False):
+    from app.bond_echo import EchoTokenQueue
+
+    config = _config(dry_run=dry_run)
+    bond_client = BondClient(config.bond_host, config.bond_token, session=session)
+    last_speed_store = LastSpeedStore(tmp_path / "last_speed.json")
+    event_log = EventLog()
+    tokens = EchoTokenQueue(ttl_seconds=60.0)
+    pipeline = Pipeline(config, bond_client, last_speed_store, event_log, tokens)
+    return pipeline, event_log, tokens
+
+
+def _light(room="livingroom"):
+    return MatchedEvent(room=room, button="light", percentage=None)
+
+
+def test_echo_of_bonds_own_transmission_is_not_corrected(tmp_path):
+    """The bug: the SDR hears the Bond Bridge's own TX, the add-on 'corrects'
+    it, and inverts the value Bond just set. With a token outstanding the
+    decode must be recognised as our own echo - no GET, no PATCH."""
+    session = FakeSession(get_response=FakeResponse(json_data={"light": 1}))
+    pipeline, event_log, tokens = _echo_pipeline(tmp_path, session)
+    tokens.enqueue(LIVINGROOM_DEVICE, "light")
+
+    pipeline.handle_event(_light())
+
+    assert session.calls == []
+    assert event_log.recent_events()[0].result == "ignored (bond self-TX echo)"
+
+
+def test_genuine_press_after_an_echo_is_still_corrected(tmp_path):
+    """The case a blanket time window gets wrong. One transmission yields one
+    token; the echo consumes it, and a real wall-switch press moments later
+    finds none left and is corrected normally."""
+    session = FakeSession(get_response=FakeResponse(json_data={"light": 1}))
+    pipeline, event_log, tokens = _echo_pipeline(tmp_path, session)
+    tokens.enqueue(LIVINGROOM_DEVICE, "light")
+
+    pipeline.handle_event(_light())   # echo   -> suppressed
+    pipeline.handle_event(_light())   # press  -> corrected
+
+    patches = [c for c in session.calls if c[0] == "PATCH"]
+    assert len(patches) == 1
+    assert patches[0][3] == {"light": 0}
+    assert event_log.recent_events()[0].result == "ok"
+
+
+def test_press_with_no_token_is_corrected_normally(tmp_path):
+    session = FakeSession(get_response=FakeResponse(json_data={"light": 0}))
+    pipeline, event_log, _ = _echo_pipeline(tmp_path, session)
+
+    pipeline.handle_event(_light())
+
+    assert [c[3] for c in session.calls if c[0] == "PATCH"] == [{"light": 1}]
+
+
+def test_echo_suppression_applies_under_dry_run(tmp_path):
+    """dry_run must exercise the real decision path, so the verification plan's
+    log-watching step reflects what the live add-on will actually do."""
+    session = FakeSession(get_response=FakeResponse(json_data={"light": 1}))
+    pipeline, event_log, tokens = _echo_pipeline(tmp_path, session)
+    tokens.enqueue(LIVINGROOM_DEVICE, "light")
+
+    pipeline.handle_event(_light())
+
+    assert event_log.recent_events()[0].result == "ignored (bond self-TX echo)"
+
+
+def test_token_for_one_button_does_not_suppress_another(tmp_path):
+    """A light token must not swallow a speed press - that would skip the
+    speed correction AND leave the light echo to be 'corrected'."""
+    session = FakeSession(get_response=FakeResponse(json_data={"light": 1, "power": 1}))
+    pipeline, event_log, tokens = _echo_pipeline(tmp_path, session)
+    tokens.enqueue(LIVINGROOM_DEVICE, "light")
+
+    pipeline.handle_event(MatchedEvent(room="livingroom", button="speed", percentage=66))
+
+    assert [c[3] for c in session.calls if c[0] == "PATCH"] == [{"power": 1, "speed": 2}]
