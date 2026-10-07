@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0
+
+- **Each decode now logs its signal level** (`level <room>/<button>: RSSI …,
+  SNR …, Noise … dB`), from rtl_433's `-M level`. Wall-switch reception was
+  found marginal for one room on 2026-10-06 — 2 of 7 dining room presses
+  decoded, 1–3 times each, against 4 of 4 and 4–7 decodes for the living
+  room — and the only way to judge a new antenna position was counting `seen`
+  lines. Verified against rtl_433 22.11's real output (the version this image
+  installs), which prints the first record of a run one field per line and
+  later ones packed several per line; both layouts are handled and tested.
+
 ## 1.2.0
 
 - **Fixed an RF echo feedback loop: the add-on was "correcting" the Bond

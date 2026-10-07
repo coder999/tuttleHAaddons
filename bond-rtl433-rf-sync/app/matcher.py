@@ -9,6 +9,10 @@ SPEED_COUNTER_TO_PERCENTAGE = {0: 33, 1: 66, 2: 100, 3: 0}
 
 LINE_RE = re.compile(r"codes\s*:\s*\{25\}([0-9a-f]+)$")
 
+# rtl_433 `-M level` fields. They follow the codes line, either one per line or
+# all on one line (rtl_433 prints the first record of a run vertically).
+LEVEL_RE = re.compile(r"(RSSI|SNR|Noise)\s*:\s*(-?[\d.]+) dB")
+
 
 @dataclass(frozen=True)
 class MatchedEvent:
@@ -38,6 +42,10 @@ def decode_only(line: str) -> tuple[str, int] | None:
         return None
     stable_id, counter = decode_hex(m.group(1))
     return f"{stable_id:x}", counter
+
+
+def parse_levels(line: str) -> dict[str, float]:
+    return {name: float(value) for name, value in LEVEL_RE.findall(line)}
 
 
 def match_line(

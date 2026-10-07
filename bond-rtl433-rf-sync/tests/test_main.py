@@ -69,3 +69,46 @@ def test_install_shutdown_handler_stops_rf_source_on_sigterm_and_sigint(monkeypa
         registered[signal.SIGTERM](signal.SIGTERM, None)
 
     assert stopped == [True]
+
+
+# Real rtl_433 22.11 `-M level` output (a synthetic capture, code swapped for
+# one _config() knows). The first record of a run prints one field per line,
+# later ones pack several per line; both must yield a level line.
+LEVEL_OUTPUT = """\
+time      : @0.020004s
+len       : 25
+data      : 3b20
+codes     : {25}3b20
+Modulation: ASK
+Freq      : 304.3 MHz
+RSSI      : -6.8 dB
+SNR       : 26.9 dB
+Noise     : -33.7 dB
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+time      : @0.058004s
+len       : 25           data      : 3b20
+codes     : {25}3b20
+Modulation: ASK          Freq      : 304.3 MHz
+RSSI      : -6.8 dB      SNR       : 21.7 dB       Noise     : -28.5 dB
+"""
+
+
+def test_run_pipeline_logs_signal_level_of_each_decode(caplog):
+    import logging
+
+    class _Source:
+        def lines(self):
+            return iter(LEVEL_OUTPUT.splitlines())
+
+    class _Debouncer:
+        def see(self, event):
+            pass
+
+    with caplog.at_level(logging.INFO, logger="bond-rtl433-rf-sync"):
+        run_pipeline(_config(), _Source(), _Debouncer())
+
+    levels = [r.getMessage() for r in caplog.records if r.getMessage().startswith("level")]
+    assert levels == [
+        "level livingroom/power: RSSI -6.8 dB, SNR 26.9 dB, Noise -33.7 dB",
+        "level livingroom/power: RSSI -6.8 dB, SNR 21.7 dB, Noise -28.5 dB",
+    ]

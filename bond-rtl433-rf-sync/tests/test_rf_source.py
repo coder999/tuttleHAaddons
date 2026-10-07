@@ -52,6 +52,7 @@ def test_rtl433_command_disables_builtin_protocols_and_sets_flex_decoder():
     assert cmd[0] == "rtl_433"
     assert cmd[cmd.index("-R") + 1] == "0"
     assert "m=OOK_PWM" in cmd[cmd.index("-X") + 1]
+    assert cmd[cmd.index("-M") + 1] == "level"
 
 
 def test_default_liveness_probe_is_none_for_local_source():

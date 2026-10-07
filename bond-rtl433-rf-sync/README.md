@@ -136,6 +136,17 @@ If nothing decodes at all, the frequency is the first thing to check —
 `rtl433_frequency` defaults to 304.25 MHz, which is what the fans this was
 built against use. Other brands commonly use 315 MHz or 433.92 MHz.
 
+If some presses decode and others don't, it is usually reception margin. Each
+decode is followed by its signal level:
+
+```
+level diningroom/light: RSSI -6.8 dB, SNR 26.9 dB, Noise -33.7 dB
+```
+
+SNR is the number to compare when moving the antenna. One press normally
+decodes several times (one per repeat the switch sends), so few `seen` lines
+per press is also a sign of a weak signal.
+
 ## Why it ignores some presses it hears
 
 The Bond Bridge transmits the *same* RF codes the wall switches do, so its own

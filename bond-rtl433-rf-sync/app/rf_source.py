@@ -31,7 +31,7 @@ def build_source_args(config: Config) -> list[str]:
 
 
 def rtl433_command(config: Config) -> list[str]:
-    return ["rtl_433", *build_source_args(config), "-R", "0", "-X", FLEX_DECODER]
+    return ["rtl_433", *build_source_args(config), "-R", "0", "-X", FLEX_DECODER, "-M", "level"]
 
 
 def default_liveness_probe(config: Config, timeout: float) -> Callable[[], bool] | None:

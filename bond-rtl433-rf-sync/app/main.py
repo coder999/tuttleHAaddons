@@ -17,7 +17,7 @@ from app.config import Config, load_config
 from app.debouncer import TOGGLE_BUTTONS, Debouncer
 from app.event_log import EventLog
 from app.last_speed_store import LastSpeedStore
-from app.matcher import MatchedEvent, decode_only, match_line
+from app.matcher import MatchedEvent, decode_only, match_line, parse_levels
 from app.rf_source import RFSourceManager
 from app.web import create_app
 
@@ -107,7 +107,20 @@ def run_pipeline(config: Config, rf_source: RFSourceManager, debouncer: Debounce
         config.rtl433_source,
         config.dry_run,
     )
+    # Signal level of each decode, for judging antenna placement. Noise is the
+    # last field rtl_433 prints, so it closes the record.
+    last_decode: str | None = None
+    levels: dict[str, float] = {}
     for line in rf_source.lines():
+        found = parse_levels(line)
+        if found:
+            levels.update(found)
+            if "Noise" in levels:
+                if last_decode is not None:
+                    log.info("level %s: %s", last_decode,
+                             ", ".join(f"{k} {v:.1f} dB" for k, v in levels.items()))
+                last_decode, levels = None, {}
+            continue
         event = match_line(line, config.code_table)
         if event is None:
             # An unmatched but well-formed transmission is how you discover
@@ -117,8 +130,10 @@ def run_pipeline(config: Config, rf_source: RFSourceManager, debouncer: Debounce
             if decoded is not None:
                 log.info("unmatched RF press: stable_id=%s counter=%s "
                          "(add it to code_table to act on it)", *decoded)
+                last_decode = f"stable_id={decoded[0]}"
             continue
         log.info("seen %s/%s percentage=%s", event.room, event.button, event.percentage)
+        last_decode = f"{event.room}/{event.button}"
         debouncer.see(event)
 
 
