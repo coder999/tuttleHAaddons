@@ -17,11 +17,17 @@ a plausible-looking wrong number on a dashboard.
 
 Never exits on a push failure: the console's SIGNAL LOST is the liveness
 signal. Only GET calls are made to the Supervisor.
+
+With the `pulse` option on (the default), a second thread posts a small
+live-graph sample (CPU, memory, swap, load, temperature) every 2 s to
+<ingest_url>/pulse over one kept-alive connection, beside the 30 s snapshot.
+Network is 0 there too, for the same reason as above.
 """
 import glob
 import json
 import os
 import sys
+import threading
 import time
 
 import psutil
@@ -140,7 +146,7 @@ def build_snapshot(sup, addon_stats: bool = True, sample_seconds: float = 1.0,
             "cpu_pct": round(min(100.0, cpu), 1),
             "load1": round(load[0], 2), "load5": round(load[1], 2), "load15": round(load[2], 2),
             "mem_total_mb": round(vm.total / 2**20), "mem_used_mb": round((vm.total - vm.available) / 2**20),
-            "swap_used_mb": round(sw.used / 2**20),
+            "swap_used_mb": round(sw.used / 2**20), "swap_total_mb": round(sw.total / 2**20),
             "disk_root_total_gb": float(host.get("disk_total") or 0),
             "disk_root_used_gb": float(host.get("disk_used") or 0),
             # Namespaced counters would measure this container, not the host --
@@ -168,6 +174,60 @@ def push(url: str, token: str, body: bytes, host_id: str = DEFAULT_HOST_ID) -> N
             print(f"console-agent: HTTP {r.status_code} from console: {r.text[:500]}", flush=True)
     except requests.RequestException as e:
         print(f"console-agent: console unreachable: {e}", flush=True)
+
+
+PULSE_EVERY = float(os.environ.get("CONSOLE_PULSE_INTERVAL", "2"))
+
+
+def pulse_sample(state: dict, host_id: str = DEFAULT_HOST_ID) -> dict:
+    """One 2 s live-graph sample. CPU comes from this function's OWN
+    cpu_times() deltas, never psutil.cpu_percent(None): that keeps shared
+    "since the last call" state, and the snapshot's cpu_percent(interval=...)
+    on the main thread would reset it under us, skewing both."""
+    now = time.time()
+    t = psutil.cpu_times()
+    total, idle = sum(t), t.idle + getattr(t, "iowait", 0.0)
+    prev = state.get("prev")
+    cpu = 100.0 * (1 - (idle - prev[1]) / (total - prev[0])) if prev and total > prev[0] else 0.0
+    state["prev"] = (total, idle)
+    vm, sw = psutil.virtual_memory(), psutil.swap_memory()
+    return {
+        "host": host_id, "t": int(now * 1000),
+        "cpu_pct": round(max(0.0, min(100.0, cpu)), 1),
+        "mem_used_mb": round((vm.total - vm.available) / 2**20), "mem_total_mb": round(vm.total / 2**20),
+        "swap_used_mb": round(sw.used / 2**20), "swap_total_mb": round(sw.total / 2**20),
+        "net_rx_bps": 0, "net_tx_bps": 0,      # no host network: see the module docstring
+        "load1": round(os.getloadavg()[0], 2),
+        "cpu_temp_c": cpu_temp_c(),
+    }
+
+
+def pulse_loop(url: str, token: str, host_id: str) -> None:
+    """Post a pulse every 2 s over one kept-alive session. A failed post drops
+    that sample; failures log once and then once a minute; nothing raises."""
+    session = requests.Session()
+    session.headers.update({"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                            "User-Agent": f"console-pulse ({host_id})"})
+    state, failing, backoff = {}, 0, PULSE_EVERY
+    pulse_sample(state, host_id)
+    nxt = time.monotonic() + PULSE_EVERY
+    while True:
+        time.sleep(max(0.0, nxt - time.monotonic()))
+        try:
+            r = session.post(url, data=json.dumps(pulse_sample(state, host_id), separators=(",", ":")), timeout=5)
+            if r.status_code != 204:
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+            if failing:
+                print(f"console-pulse: recovered after {failing} failed posts", flush=True)
+            failing, backoff = 0, PULSE_EVERY
+        except Exception as e:                # noqa: BLE001 -- degrade, never crash
+            failing += 1
+            if failing == 1 or failing % max(1, int(60 / PULSE_EVERY)) == 0:
+                print(f"console-pulse: post failed ({failing} in a row): {e}", flush=True)
+            backoff = min(30.0, backoff * 2)
+        nxt += PULSE_EVERY if not failing else backoff
+        if time.monotonic() - nxt > 10 * PULSE_EVERY:   # suspended: resync, don't burst
+            nxt = time.monotonic()
 
 
 def load_options(path: str = OPTIONS):
@@ -201,6 +261,10 @@ def main() -> int:
               "set it to your own console in the add-on configuration. Idling.", flush=True)
     sup = Supervisor(token)
     interval = int(opts.get("interval_seconds", 30))
+    if ingest_token and ingest_url != DEFAULT_INGEST_URL and opts.get("pulse", True):
+        pulse_url = ingest_url.rstrip("/") + "/pulse"
+        threading.Thread(target=pulse_loop, args=(pulse_url, ingest_token, host_id), name="pulse", daemon=True).start()
+        print(f"console-agent: pulse every {PULSE_EVERY:g}s to {pulse_url}", flush=True)
     while True:
         started = time.time()
         if ingest_token and ingest_url != DEFAULT_INGEST_URL:

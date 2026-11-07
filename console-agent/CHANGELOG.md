@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- **Live graphs every 2 s.** With the new `pulse` option (on by default), a
+  second thread posts a small sample (CPU, memory, swap, load, temperature)
+  every 2 s to `<ingest_url>/pulse` over one kept-alive connection, beside the
+  30 s snapshot. The console's live graphs and "updated just now" use it.
+  Network stays 0, as in the snapshot. Turn `pulse` off to send snapshots only.
+- The snapshot's metrics now include `swap_total_mb`, so the console can draw a
+  swap bar.
+
 ## 0.2.0
 
 - **The target console is now entirely configurable.** `host` was hard-coded to

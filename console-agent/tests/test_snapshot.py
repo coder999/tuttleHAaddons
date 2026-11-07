@@ -18,8 +18,10 @@ import pytest
 from app import main
 from tests.fake_supervisor import FakeSupervisor
 
+# The console moved into admin-console in 2026-11; its contract moved with it.
 SCHEMA_PATH = pathlib.Path(os.environ.get("CONSOLE_SCHEMA", os.path.expanduser(
-    "~/docker/html-local/console/htdocs/contract/snapshot.schema.json")))
+    "~/docker/html-local/admin-console/htdocs/contract/snapshot.schema.json")))
+PULSE_SCHEMA_PATH = SCHEMA_PATH.with_name("pulse.schema.json")
 # Loaded lazily and guarded: at module scope a missing file made the whole
 # suite error during collection, so anyone without a console checkout could
 # not run even the tests that need no schema.
@@ -291,3 +293,27 @@ def test_snapshot_carries_the_temperature_and_validates(monkeypatch):
                               host_id=CONTRACT_HOST_ID)
     validate(doc)
     assert doc["metrics"]["cpu_temp_c"] == 44.2
+
+
+@pytest.mark.skipif(not PULSE_SCHEMA_PATH.is_file(), reason=f"no pulse contract at {PULSE_SCHEMA_PATH}")
+def test_pulse_sample_validates_against_the_pulse_contract():
+    state = {}
+    main.pulse_sample(state, "ha")
+    sample = main.pulse_sample(state, "ha")
+    jsonschema.Draft202012Validator(json.loads(PULSE_SCHEMA_PATH.read_text())).validate(sample)
+    assert sample["net_rx_bps"] == 0 and sample["net_tx_bps"] == 0
+    assert sample["mem_total_mb"] > 0 and sample["swap_total_mb"] >= 0
+
+
+def test_pulse_cpu_is_its_own_delta_not_the_shared_cpu_percent(monkeypatch):
+    """The snapshot's cpu_percent(interval=...) runs on another thread; the
+    pulse must never read psutil.cpu_percent, whose state that call resets."""
+    monkeypatch.setattr(main.psutil, "cpu_percent", lambda *a, **k: (_ for _ in ()).throw(AssertionError("shared state")))
+    state = {}
+    main.pulse_sample(state)
+    assert 0 <= main.pulse_sample(state)["cpu_pct"] <= 100
+
+
+def test_snapshot_carries_swap_total():
+    snap = main.build_snapshot(FakeSupervisor(), sample_seconds=0.05)
+    assert snap["metrics"]["swap_total_mb"] >= 0

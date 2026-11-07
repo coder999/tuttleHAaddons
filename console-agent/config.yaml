@@ -1,7 +1,7 @@
 name: Console Agent
 slug: console_agent
 description: Pushes this host's CPU/RAM/disk and add-on state to a console endpoint you configure
-version: "0.2.0"
+version: "0.3.0"
 arch:
   - amd64
   - aarch64
@@ -15,9 +15,11 @@ options:
   host_id: "homeassistant"
   interval_seconds: 30
   addon_stats: true
+  pulse: true
 schema:
   ingest_url: url
   ingest_token: password
   host_id: str
   interval_seconds: int(10,600)
   addon_stats: bool
+  pulse: bool?
