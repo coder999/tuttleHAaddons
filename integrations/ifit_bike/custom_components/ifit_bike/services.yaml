@@ -1,0 +1,13 @@
+strava_authorize:
+  fields:
+    code:
+      required: true
+      selector:
+        text:
+upload_ride:
+  fields:
+    file:
+      required: true
+      example: 20261107-183000.tcx
+      selector:
+        text:

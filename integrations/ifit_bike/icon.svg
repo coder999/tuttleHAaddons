@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <title>bike-icon</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path id="background" d="M96 0 L416 0 C469.019 0 512 42.981 512 96 L512 416 C512 469.019 469.019 512 416 512 L96 512 C42.981 512 0 469.019 0 416 L0 96 C0 42.981 42.981 0 96 0 Z" fill="#1e293b"/>
+    <path id="rear_wheel" data-name="rear wheel" d="M62 335 C62 288.056 100.056 250 147 250 C193.944 250 232 288.056 232 335 C232 381.944 193.944 420 147 420 C100.056 420 62 381.944 62 335 Z" fill="none" stroke="#f8fafc" stroke-width="22" stroke-miterlimit="10"/>
+    <path id="front_wheel" data-name="front wheel" d="M280 335 C280 288.056 318.056 250 365 250 C411.944 250 450 288.056 450 335 C450 381.944 411.944 420 365 420 C318.056 420 280 381.944 280 335 Z" fill="none" stroke="#f8fafc" stroke-width="22" stroke-miterlimit="10"/>
+    <path id="frame" d="M147 335 L250 335 L218 205 Z M218 205 L340 212 L250 335 M340 212 L365 335 M340 212 L332 178 L368 172 M190 196 L246 196" fill="none" stroke="#f59e0b" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="bolt" d="M298 36 L246 110 L280 110 L260 170 L322 88 L288 88 L314 36 Z" fill="#fbbf24"/>
+  </g>
+</svg>

@@ -10,6 +10,12 @@ These add-ons are intended for users who want to install third-party Home Assist
 - [Bond-rtl_433 RF Sync](bond-rtl433-rf-sync/README.md) - Corrects Bond Bridge's believed fan/light state from wall-switch RF presses, without transmitting anything
 - [Console Agent](console-agent/README.md) - Pushes this host's CPU/RAM/disk and add-on state to a console endpoint you configure, every 30 s
 
+## Custom integrations
+
+Not add-ons: the add-on store skips these folders. Each has its own install steps.
+
+- [iFit Bike](integrations/ifit_bike/README.md) - ProForm/iFit exercise bike over Bluetooth: live sensors, rides saved as TCX and uploaded to Strava
+
 ## Installing This Repository in Home Assistant
 
 Home Assistant supports adding third-party app repositories directly from a Git repository URL.
