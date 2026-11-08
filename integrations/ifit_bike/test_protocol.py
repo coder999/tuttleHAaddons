@@ -7,15 +7,17 @@ sys.path.insert(0, str(Path(__file__).parent / "custom_components/ifit_bike"))
 import protocol as p
 
 
-def frame(res=0x13, watts=150, cad=80, tail=None):
+def frame(res=0x13, watts=150, cad=80, odo=0x1620, tail=None):
     b = bytearray(b"\x00\x12\x01\x04\x02\x32" + bytes(14))
     b[11], b[12], b[13], b[18] = res, watts & 0xFF, watts >> 8, cad
+    b[14], b[15] = odo & 0xFF, odo >> 8
     if tail:
         b[12:] = tail
     return bytes(b)
 
 
-assert p.parse(frame(), 0.33) == {"power": 150, "cadence": 80, "speed": 26.4, "resistance": 8}
+assert p.parse(frame(), 0.33) == {"power": 150, "cadence": 80, "speed": 26.4, "resistance": 8,
+                                  "odometer": 5664}
 assert p.parse(frame(res=0x14), 0.33).get("resistance") is None  # mid-change byte: keep previous
 assert p.parse(frame(watts=3001), 0.33) == {"power": 0}
 assert p.parse(frame(tail=b"\xff" * 8), 0.33) is None
@@ -25,15 +27,19 @@ assert p.parse(frame()[:19], 0.33) is None
 assert p.parse(bytes.fromhex("00120104021d071d8102530103000000000000 0fbc".replace(" ", "")), 0.33) is None
 # steady-state frame from the live capture: 262 W, 59 rpm, resistance 11
 assert p.parse(bytes.fromhex("0012010402320732 0202da1a0601af3400003b00".replace(" ", "")), 0.33) == {
-    "power": 262, "cadence": 59, "speed": 19.47, "resistance": 11}
+    "power": 262, "cadence": 59, "speed": 19.47, "resistance": 11, "odometer": 13487}
 assert all(len(f) in (4, 20) for f in p.INIT + p.POLL + p.SET_RESISTANCE)
 # Set and read use one scale: each command's level byte decodes back to its own level.
 assert [p.RESISTANCE[f[12]] for f in p.SET_RESISTANCE] == list(range(1, 17))
 assert p.POLL[p.RESISTANCE_AFTER_POLL] == bytes.fromhex("fe020d02")
 
+assert p.odometer_step(5664, 5672) == 8
+assert p.odometer_step(5672, 5672) == 0
+assert p.odometer_step(5672, 40) == 40  # console restarted its count
+
 # 10 min at 200 W, 90 rpm, 30 km/h, 1 Hz
 t0 = 1_762_500_000
-xml = p.tcx([(t0 + i, 200, 90, 30.0) for i in range(601)])
+xml = p.tcx([(t0 + i, 200, 90, 30.0, i * 30 / 3.6) for i in range(601)])
 ns = {"t": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2",
       "x": "http://www.garmin.com/xmlschemas/ActivityExtension/v2"}
 root = ET.fromstring(xml.encode())

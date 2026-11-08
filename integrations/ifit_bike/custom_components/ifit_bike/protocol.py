@@ -84,25 +84,39 @@ def parse(frame: bytes, wheel_ratio: float) -> dict | None:
     power = frame[12] | frame[13] << 8
     if power > 3000:  # QZ: the bike sends junk here sometimes; zero power, keep the rest
         return {"power": 0}
-    out = {"power": power, "cadence": frame[18], "speed": round(wheel_ratio * frame[18], 2)}
+    out = {
+        "power": power,
+        "cadence": frame[18],
+        "speed": round(wheel_ratio * frame[18], 2),
+        # The console's own odometer, meters, uint16 (wraps at ~40.7 mi). Not in QZ; matched
+        # the console's distance readout live 2026-11-07 (8.37 mi) and 2026-11-08 (3.5 mi).
+        "odometer": frame[14] | frame[15] << 8,
+    }
     if frame[11] in RESISTANCE:
         out["resistance"] = RESISTANCE[frame[11]]
     return out
 
 
-def tcx(samples: list[tuple[float, int, int, float]]) -> str:
-    """samples: [(epoch_s, watts, cadence, speed_kmh)], ~1 s apart -> TCX with power + cadence."""
+def odometer_step(last: int, now: int) -> int:
+    """Meters ridden between two odometer readings. A drop means the console restarted its
+    count (new workout), so count from 0. ponytail: a true uint16 wrap (40.7 mi into one
+    console session) undercounts once."""
+    return now - last if now >= last else now
+
+
+def tcx(samples: list[tuple[float, int, int, float, float]]) -> str:
+    """samples: [(epoch_s, watts, cadence, speed_kmh, ride_distance_m)], ~1 s apart, gaps
+    allowed -> TCX with distance, power and cadence."""
 
     def ts(t: float) -> str:
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
-    dist = joules = 0.0
+    joules = 0.0
     prev = samples[0][0]
     pts = []
-    for t, watts, cad, kmh in samples:
-        dt = t - prev
+    for t, watts, cad, kmh, dist in samples:
+        dt = min(t - prev, 5)  # a dropout gap shouldn't count as effort at the last wattage
         prev = t
-        dist += kmh / 3.6 * dt
         joules += watts * dt
         pts.append(
             f"<Trackpoint><Time>{ts(t)}</Time><DistanceMeters>{dist:.1f}</DistanceMeters>"

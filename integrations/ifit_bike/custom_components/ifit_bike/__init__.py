@@ -32,7 +32,7 @@ SIGNAL = f"{DOMAIN}_update"
 PLATFORMS = ["number", "sensor", "switch"]
 RIDE_END_IDLE = 120  # s with no pedaling ends a ride
 MIN_RIDE = 60  # s; shorter rides are dropped
-RETRY_AFTER_FAIL = 60  # s
+RETRY_AFTER_FAIL = 60  # s, after a failed connect; a drop mid-session retries on the next tick
 # Let go of an idle bike so the console can sleep (it's battery powered). Re-arm only after the
 # bike stops advertising (console asleep): while it's awake it keeps advertising, and the
 # 10 s connect timer would grab it straight back. ponytail: a ride started within the
@@ -52,9 +52,10 @@ class Bike:
         self.rides_dir = Path(hass.config.path("ifit_rides"))
         self.enabled = True  # the switch entity restores the real value at startup
         self.status = "disconnected"
-        self.data: dict = {"power": None, "cadence": None, "speed": None, "resistance": None}
-        self.ride: list[tuple[float, int, int, float]] = []
-        self.ride_distance = 0.0  # m
+        self.data: dict = dict.fromkeys(("power", "cadence", "speed", "resistance", "odometer"))
+        self.ride: list[tuple[float, int, int, float, float]] = []
+        self.ride_distance = 0.0  # m, from the console's odometer
+        self._last_odometer: int | None = None  # kept across dropouts: the gap's distance counts
         self.last_pedal = 0.0
         self._task: asyncio.Task | None = None
         self._next_try = 0.0
@@ -80,6 +81,9 @@ class Bike:
 
     @callback
     def maybe_connect(self, _now=None) -> None:
+        # A ride survives a dropout; it ends here if the bike stays unreachable.
+        if self.ride and not self._task and time.time() - self.last_pedal > RIDE_END_IDLE:
+            self._end_ride()
         # Timer, not an advertisement callback: HA doesn't re-fire callbacks for unchanged
         # adverts, so a callback alone would never retry after a dropped session.
         if not self.enabled or self.released or self._task or time.monotonic() < self._next_try:
@@ -91,6 +95,7 @@ class Bike:
     async def _session(self, device) -> None:
         self.status = "connecting"
         self._push()
+        connected = False
         try:
             client = await establish_connection(BleakClientWithServiceCache, device, DOMAIN)
             try:
@@ -98,6 +103,7 @@ class Bike:
                 for frame in protocol.INIT:
                     await client.write_gatt_char(protocol.WRITE_UUID, frame, response=True)
                     await asyncio.sleep(0.4)
+                connected = True
                 self.status = "connected"
                 self._connected_at = time.time()
                 self._push()
@@ -126,12 +132,14 @@ class Bike:
                 await client.disconnect()
         except Exception as err:  # noqa: BLE001 - BLE drops are routine; the timer retries
             _LOGGER.info("Bike session ended: %r", err)
-            self._next_try = time.monotonic() + RETRY_AFTER_FAIL
+            if not connected:
+                self._next_try = time.monotonic() + RETRY_AFTER_FAIL
         finally:
+            # No _end_ride here: a GATT hiccup mid-ride used to split the ride in two
+            # (2026-11-08). maybe_connect ends it if the bike stays gone.
             self._task = None
             self.data = dict.fromkeys(self.data)
             self.status = "idle" if self.released else "disconnected"
-            self._end_ride()
             self._push()
 
     def _on_frame(self, _char, frame: bytearray) -> None:
@@ -151,17 +159,20 @@ class Bike:
             _LOGGER.info("Bike idle %d s: releasing it until its console sleeps", IDLE_RELEASE)
             self.released = True  # the poll loop exits and disconnects
         elif self.ride or cadence > 0:
+            odometer = self.data["odometer"]
+            if self.ride and odometer is not None and self._last_odometer is not None:
+                self.ride_distance += protocol.odometer_step(self._last_odometer, odometer)
             speed = self.data["speed"] or 0.0
-            if self.ride:
-                self.ride_distance += speed / 3.6 * (now - self.ride[-1][0])
-            self.ride.append((now, self.data["power"] or 0, cadence, speed))
+            self.ride.append((now, self.data["power"] or 0, cadence, speed, self.ride_distance))
+        if self.data["odometer"] is not None:
+            self._last_odometer = self.data["odometer"]
         self.status = "riding" if self.ride else "connected"
         self._push()
 
     def _end_ride(self) -> None:
         ride = [s for s in self.ride if s[0] <= self.last_pedal]  # drop the idle tail
         self.ride, self.ride_distance = [], 0.0
-        if len(ride) >= MIN_RIDE:
+        if ride and ride[-1][0] - ride[0][0] >= MIN_RIDE:
             self.hass.async_create_task(self._save_and_upload(ride))
 
     async def _save_and_upload(self, ride: list) -> None:
@@ -238,5 +249,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     bike: Bike = entry.runtime_data
     if bike._task:
-        bike._task.cancel()  # its finally block disconnects and saves any ride in progress
+        bike._task.cancel()  # its finally block disconnects
+    bike._end_ride()  # save any ride in progress
     await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
