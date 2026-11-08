@@ -33,6 +33,7 @@ class BikeSwitch(SwitchEntity, RestoreEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         self._bike.enabled = True
+        self._bike.released = False  # also the manual "connect now" after an idle release
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:

@@ -33,6 +33,12 @@ PLATFORMS = ["sensor", "switch"]
 RIDE_END_IDLE = 120  # s with no pedaling ends a ride
 MIN_RIDE = 60  # s; shorter rides are dropped
 RETRY_AFTER_FAIL = 60  # s
+# Let go of an idle bike so the console can sleep (it's battery powered). Re-arm only after the
+# bike stops advertising (console asleep): while it's awake it keeps advertising, and the
+# 10 s connect timer would grab it straight back. ponytail: a ride started within the
+# console's own sleep timeout after a release isn't caught until it sleeps and wakes again;
+# toggling the connection switch re-arms at once.
+IDLE_RELEASE = 300  # s connected with no pedaling
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -52,6 +58,8 @@ class Bike:
         self.last_pedal = 0.0
         self._task: asyncio.Task | None = None
         self._next_try = 0.0
+        self.released = False  # let go while idle; re-armed when the bike goes quiet
+        self._connected_at = 0.0
 
     @property
     def ride_time(self) -> int:
@@ -61,10 +69,19 @@ class Bike:
         async_dispatcher_send(self.hass, SIGNAL)
 
     @callback
+    def went_quiet(self, _info) -> None:
+        """The bike stopped advertising (console asleep): connect again when it wakes."""
+        if self.released:
+            _LOGGER.info("Bike went quiet: will connect when it wakes")
+            self.released = False
+            self.status = "disconnected"
+            self._push()
+
+    @callback
     def maybe_connect(self, _now=None) -> None:
         # Timer, not an advertisement callback: HA doesn't re-fire callbacks for unchanged
         # adverts, so a callback alone would never retry after a dropped session.
-        if not self.enabled or self._task or time.monotonic() < self._next_try:
+        if not self.enabled or self.released or self._task or time.monotonic() < self._next_try:
             return
         device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
         if device:
@@ -81,10 +98,11 @@ class Bike:
                     await client.write_gatt_char(protocol.WRITE_UUID, frame, response=True)
                     await asyncio.sleep(0.4)
                 self.status = "connected"
+                self._connected_at = time.time()
                 self._push()
                 tick = 0
                 next_second = time.monotonic()
-                while self.enabled and client.is_connected:
+                while self.enabled and not self.released and client.is_connected:
                     # Clock-based, not tick-counted: each acked write takes ~150 ms at the
                     # bike's -88 dBm, which stretched a 5-tick "second" to ~1.75 s.
                     started = time.monotonic()
@@ -106,7 +124,7 @@ class Bike:
         finally:
             self._task = None
             self.data = dict.fromkeys(self.data)
-            self.status = "disconnected"
+            self.status = "idle" if self.released else "disconnected"
             self._end_ride()
             self._push()
 
@@ -123,6 +141,9 @@ class Bike:
             self.last_pedal = now
         if self.ride and now - self.last_pedal > RIDE_END_IDLE:
             self._end_ride()
+        elif not self.ride and now - max(self.last_pedal, self._connected_at) > IDLE_RELEASE:
+            _LOGGER.info("Bike idle %d s: releasing it until its console sleeps", IDLE_RELEASE)
+            self.released = True  # the poll loop exits and disconnects
         elif self.ride or cadence > 0:
             speed = self.data["speed"] or 0.0
             if self.ride:
@@ -201,6 +222,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     entry.async_on_unload(entry.add_update_listener(options_updated))
     entry.async_on_unload(
         async_track_time_interval(hass, bike.maybe_connect, timedelta(seconds=10))
+    )
+    entry.async_on_unload(
+        bluetooth.async_track_unavailable(hass, bike.went_quiet, bike.address, connectable=True)
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

@@ -42,7 +42,7 @@ class BikeSensor(SensorEntity):
         self._attr_state_class = state_class
         self._attr_icon = icon
         if device_class == SensorDeviceClass.ENUM:
-            self._attr_options = ["disconnected", "connecting", "connected", "riding"]
+            self._attr_options = ["disconnected", "connecting", "connected", "riding", "idle"]
 
     @property
     def native_value(self):

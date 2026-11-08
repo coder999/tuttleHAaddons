@@ -13,6 +13,9 @@ as `I_EB` and speaks iFit's proprietary protocol, not FTMS.
   (~1.4 s at the 200 ms poll; measured 2026-11-07 on the Sport CX), so values move about that often.
 - `switch.bike_connection`: off releases the bike so the iFit app can connect (the bike accepts
   one BLE connection at a time). Pressing the bike's own disconnect only drops HA for ~60 s.
+- Battery: after 5 min connected with no pedaling, HA lets go of the bike (status `idle`) so its
+  console can sleep, and connects again only after the bike has gone quiet and woken up.
+  Toggling `switch.bike_connection` off/on connects at once.
 - Rides start on the first pedal stroke and end after 2 min idle or a disconnect. Each ride over
   60 s is saved to `/config/ifit_rides/<start>.tcx` and uploaded to Strava as an indoor ride.
 - `dashboard.py` creates a "Bike" dashboard (`/dashboard-bike`) with gauges and graphs.
