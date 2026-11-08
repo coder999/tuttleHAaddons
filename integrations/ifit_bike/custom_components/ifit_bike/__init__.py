@@ -11,49 +11,38 @@ from pathlib import Path
 import probatio as vol  # HA 2026.11 replaced voluptuous with probatio (same API)
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 from homeassistant.components import bluetooth, persistent_notification
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import discovery
+from homeassistant.helpers.config_entry_oauth2_flow import (
+    OAuth2Session,
+    async_get_config_entry_implementation,
+)
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
 from . import protocol
-from .strava import NotAuthorized, Strava
+from .const import DEFAULT_WHEEL_RATIO, DOMAIN, WHEEL_RATIO
+from .strava import Strava
 
 _LOGGER = logging.getLogger(__name__)
-DOMAIN = "ifit_bike"
 SIGNAL = f"{DOMAIN}_update"
+PLATFORMS = ["sensor", "switch"]
 RIDE_END_IDLE = 120  # s with no pedaling ends a ride
 MIN_RIDE = 60  # s; shorter rides are dropped
 RETRY_AFTER_FAIL = 60  # s
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required(CONF_ADDRESS): cv.string,
-                # km/h per rpm. Calibration knob: compare the console's speed and adjust.
-                vol.Optional("wheel_ratio", default=0.33): vol.Coerce(float),
-                vol.Inclusive("strava_client_id", "strava"): cv.string,
-                vol.Inclusive("strava_client_secret", "strava"): cv.string,
-            }
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 class Bike:
-    def __init__(self, hass: HomeAssistant, conf: dict) -> None:
+    def __init__(self, hass: HomeAssistant, address: str, wheel_ratio: float) -> None:
         self.hass = hass
-        self.address = conf[CONF_ADDRESS].upper()
-        self.wheel_ratio = conf["wheel_ratio"]
-        self.strava = (
-            Strava(hass, conf["strava_client_id"], conf["strava_client_secret"])
-            if "strava_client_id" in conf
-            else None
-        )
+        self.address = address.upper()
+        self.wheel_ratio = wheel_ratio
+        self.strava: Strava | None = None
         self.rides_dir = Path(hass.config.path("ifit_rides"))
         self.enabled = True  # the switch entity restores the real value at startup
         self.status = "disconnected"
@@ -164,13 +153,10 @@ class Bike:
             return
         try:
             url = await self.strava.upload(name, tcx)
-        except NotAuthorized:
-            self._notify(f"Ride {name} saved but not uploaded: Strava isn't authorized yet. "
-                         f"[Authorize]({self.strava.authorize_url}), then run "
-                         f"`ifit_bike.strava_authorize` with the code, then `ifit_bike.upload_ride`.")
         except Exception as err:  # noqa: BLE001 - surface every failure; the TCX is kept
-            self._notify(f"Strava upload of {name} failed: {err}\n\n"
-                         f"Retry with `ifit_bike.upload_ride` (file: {name}).")
+            self._notify(f"Strava upload of {name} failed: {err}\n\nIf Strava needs connecting "
+                         "again: Settings > Devices & services > iFit Bike > Reconfigure. Then "
+                         f"retry with the `ifit_bike.upload_ride` action (file: {name}).")
         else:
             _LOGGER.info("Uploaded %s: %s", name, url)
 
@@ -179,28 +165,48 @@ class Bike:
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    bike = hass.data[DOMAIN] = Bike(hass, config[DOMAIN])
-    async_track_time_interval(hass, bike.maybe_connect, timedelta(seconds=10))
-    for platform in ("sensor", "switch"):
-        hass.async_create_task(discovery.async_load_platform(hass, platform, DOMAIN, {}, config))
-
-    async def strava_authorize(call: ServiceCall) -> None:
-        await bike.strava.exchange(call.data["code"].strip())
-        persistent_notification.async_dismiss(hass, f"{DOMAIN}_strava")
-
     async def upload_ride(call: ServiceCall) -> None:
+        # ponytail: one bike per HA; pick the first loaded entry. Add a device field for more.
+        bikes = [e.runtime_data for e in hass.config_entries.async_entries(DOMAIN)
+                 if e.state is ConfigEntryState.LOADED]
+        if not bikes or not bikes[0].strava:
+            raise HomeAssistantError("No iFit bike with Strava connected")
+        bike = bikes[0]
         path = bike.rides_dir / Path(call.data["file"]).name  # basename only: no path escapes
         await bike.upload(path.name, await hass.async_add_executor_job(path.read_text))
 
-    if bike.strava:
-        hass.services.async_register(
-            DOMAIN, "strava_authorize", strava_authorize, vol.Schema({vol.Required("code"): cv.string})
-        )
-        hass.services.async_register(
-            DOMAIN, "upload_ride", upload_ride, vol.Schema({vol.Required("file"): cv.string})
-        )
-        if not await bike.strava.authorized():
-            bike._notify(f"[Authorize Strava]({bike.strava.authorize_url}). After approving, the "
-                         "browser lands on a dead localhost page: copy the `code=` value from its "
-                         "address bar and run the `ifit_bike.strava_authorize` action with it.")
+    hass.services.async_register(
+        DOMAIN, "upload_ride", upload_ride, vol.Schema({vol.Required("file"): cv.string})
+    )
     return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    bike = entry.runtime_data = Bike(
+        hass, entry.data[CONF_ADDRESS], entry.options.get(WHEEL_RATIO, DEFAULT_WHEEL_RATIO)
+    )
+    if "auth_implementation" in entry.data:
+        try:
+            impl = await async_get_config_entry_implementation(hass, entry)
+        except ValueError:  # its Application Credentials were deleted
+            bike._notify("Strava sign-in is missing. Add the Strava Application Credentials "
+                         "again, then Settings > Devices & services > iFit Bike > Reconfigure.")
+        else:
+            bike.strava = Strava(hass, OAuth2Session(hass, entry, impl))
+
+    async def options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        # Applied live, not by reload: a reload mid-ride would end the ride.
+        bike.wheel_ratio = entry.options.get(WHEEL_RATIO, DEFAULT_WHEEL_RATIO)
+
+    entry.async_on_unload(entry.add_update_listener(options_updated))
+    entry.async_on_unload(
+        async_track_time_interval(hass, bike.maybe_connect, timedelta(seconds=10))
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    bike: Bike = entry.runtime_data
+    if bike._task:
+        bike._task.cancel()  # its finally block disconnects and saves any ride in progress
+    await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)

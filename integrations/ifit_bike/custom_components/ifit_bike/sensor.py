@@ -4,7 +4,8 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.const import UnitOfLength, UnitOfPower, UnitOfSpeed, UnitOfTime
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from . import DOMAIN, SIGNAL
+from . import SIGNAL
+from .const import device_info
 
 MEAS = SensorStateClass.MEASUREMENT
 # key, name, device class, unit, state class, icon, value getter
@@ -22,21 +23,20 @@ SENSORS = [
 ]
 
 
-async def async_setup_platform(hass, config, add_entities, discovery_info=None):
-    if discovery_info is None:
-        return
-    bike = hass.data[DOMAIN]
-    add_entities(BikeSensor(bike, *s) for s in SENSORS)
+async def async_setup_entry(hass, entry, add_entities):
+    add_entities(BikeSensor(entry.runtime_data, *s) for s in SENSORS)
 
 
 class BikeSensor(SensorEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True  # "Bike Power": device name + this name
 
     def __init__(self, bike, key, name, device_class, unit, state_class, icon, getter):
         self._bike = bike
         self._get = getter
         self._attr_unique_id = f"{bike.address}_{key}"
-        self._attr_name = f"Bike {name.lower()}"
+        self._attr_name = name
+        self._attr_device_info = device_info(bike.address)
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
         self._attr_state_class = state_class

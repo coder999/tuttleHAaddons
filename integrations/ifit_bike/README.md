@@ -23,36 +23,33 @@ iFit bikes may need a different QZ profile. Speed and distance are QZ's estimate
 
 ## Install
 
-Find the bike's Bluetooth address (it advertises as `I_EB`; HA's Bluetooth settings page lists
-advertisements). Copy the integration into HA, for example over the SSH add-on:
+Copy the integration into HA (for example over the SSH add-on) and restart HA fully; custom code
+only loads at startup, and a restart mid-ride ends that ride:
 
 ```sh
 tar -C custom_components -c --exclude=__pycache__ ifit_bike | ssh <ha-host> 'tar -C /config/custom_components -x'
 ```
 
-Add a package such as `/config/packages/ifit_bike.yaml`, then restart HA fully (custom code only
-loads at startup; a restart mid-ride ends that ride):
+Then wake the bike's console. HA discovers it (Bluetooth name `I_EB...`) and offers **iFit Bike**
+under Settings > Devices & services; or add it there by hand. No YAML.
 
-```yaml
-ifit_bike:
-  address: AA:BB:CC:DD:EE:FF
-  # wheel_ratio: 0.33
-  strava_client_id: !secret strava_client_id        # omit both lines to skip Strava
-  strava_client_secret: !secret strava_client_secret
-```
+- **Settings** (Configure on the integration): `wheel_ratio`, applied live.
+- **Strava**: offered during setup, or later via Reconfigure (connect, reconnect, disconnect).
 
 Dashboard (optional): `TOKEN=<HA long-lived token> python3 dashboard.py ws://<ha-host>:8123/api/websocket`
 
 ## Strava
 
-1. Create an API app at https://www.strava.com/settings/api. Website can be any URL you own;
-   set the callback domain to `localhost`. It requires an icon: `icon.png` here works.
+1. Create an API app at https://www.strava.com/settings/api. Website can be any URL you own; set
+   the **Authorization Callback Domain to `my.home-assistant.io`** (HA's OAuth redirect when the
+   `my` integration is loaded, which `default_config` does). It requires an icon: `icon.png` works.
    Ignore the access/refresh tokens on that page (read-only scope).
-2. Put its client ID and secret in HA's `secrets.yaml` (keys above) and restart.
-3. HA shows an "Authorize Strava" notification. Approve (keep "upload activities" ticked); the
-   browser lands on a dead localhost page. Copy `code=` from its address bar into the
-   `ifit_bike.strava_authorize` action within a few minutes (codes are single-use).
-4. A ride that couldn't upload stays in `/config/ifit_rides/`; retry with `ifit_bike.upload_ride`.
+2. Choose **Connect Strava** in setup or Reconfigure. The first time, HA asks for the app's Client
+   ID and Secret (stored in Settings > Application credentials), then sends you to Strava to approve.
+3. A ride that couldn't upload stays in `/config/ifit_rides/`; retry with `ifit_bike.upload_ride`.
+
+Rides reach Apple Health only through Strava's own "Send to Health" (Strava app > Settings >
+Health); uploaded rides are forwarded once that is on.
 
 ## Check
 

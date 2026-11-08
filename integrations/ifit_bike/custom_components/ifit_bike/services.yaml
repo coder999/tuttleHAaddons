@@ -1,9 +1,3 @@
-strava_authorize:
-  fields:
-    code:
-      required: true
-      selector:
-        text:
 upload_ride:
   fields:
     file:

@@ -1,10 +1,14 @@
 {
   "domain": "ifit_bike",
   "name": "iFit Bike",
+  "bluetooth": [{ "local_name": "I_EB*", "connectable": true }],
   "codeowners": [],
-  "dependencies": ["bluetooth_adapters"],
+  "config_flow": true,
+  "dependencies": ["application_credentials", "bluetooth_adapters"],
   "documentation": "https://github.com/coder999/tuttleHAaddons/tree/main/integrations/ifit_bike",
+  "integration_type": "device",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/coder999/tuttleHAaddons/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

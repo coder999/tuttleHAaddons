@@ -5,22 +5,23 @@ from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from . import DOMAIN
+from .const import device_info
 
 
-async def async_setup_platform(hass, config, add_entities, discovery_info=None):
-    if discovery_info is not None:
-        add_entities([BikeSwitch(hass.data[DOMAIN])])
+async def async_setup_entry(hass, entry, add_entities):
+    add_entities([BikeSwitch(entry.runtime_data)])
 
 
 class BikeSwitch(SwitchEntity, RestoreEntity):
     _attr_should_poll = False
-    _attr_name = "Bike connection"
+    _attr_has_entity_name = True
+    _attr_name = "Connection"
     _attr_icon = "mdi:bluetooth"
 
     def __init__(self, bike) -> None:
         self._bike = bike
         self._attr_unique_id = f"{bike.address}_connection"
+        self._attr_device_info = device_info(bike.address)
 
     @property
     def is_on(self) -> bool:
