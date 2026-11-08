@@ -47,6 +47,21 @@ POLL = [
     _f("fe020d02"),
 ]
 
+# Set-resistance commands, one per level 1-16 (index = level - 1). QZ forceResistance()
+# default branch: written right after the poll frame fe 02 0d 02 (POLL[6]), its header.
+# Bytes 11-12 are the target (LE, +625 per level); byte 12 is the same scale the bike reports
+# back in data byte 11 (RESISTANCE below).
+SET_RESISTANCE = [
+    _f("ff0d020402090709020104" + f"{lo:02x}{hi:02x}00{ck:02x}")
+    for lo, hi, ck in [
+        (0x32, 0x02, 0x4B), (0xA3, 0x04, 0xBE), (0x14, 0x07, 0x32), (0x85, 0x09, 0xA5),
+        (0xF6, 0x0B, 0x18), (0x67, 0x0E, 0x8C), (0xD8, 0x10, 0xFF), (0x49, 0x13, 0x73),
+        (0xBA, 0x15, 0xE6), (0x2B, 0x18, 0x5A), (0x9C, 0x1A, 0xCD), (0x0D, 0x1D, 0x41),
+        (0x7E, 0x1F, 0xB4), (0xEF, 0x21, 0x27), (0x60, 0x24, 0x9B), (0xD1, 0x26, 0x0E),
+    ]
+]
+RESISTANCE_AFTER_POLL = 6  # index into POLL
+
 # Byte 11 -> console resistance level (Sport CX has 16). In-between bytes appear while the
 # level is changing; QZ keeps the previous level for them, so do we.
 RESISTANCE = {

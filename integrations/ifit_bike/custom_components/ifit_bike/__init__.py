@@ -29,7 +29,7 @@ from .strava import Strava
 
 _LOGGER = logging.getLogger(__name__)
 SIGNAL = f"{DOMAIN}_update"
-PLATFORMS = ["sensor", "switch"]
+PLATFORMS = ["number", "sensor", "switch"]
 RIDE_END_IDLE = 120  # s with no pedaling ends a ride
 MIN_RIDE = 60  # s; shorter rides are dropped
 RETRY_AFTER_FAIL = 60  # s
@@ -59,6 +59,7 @@ class Bike:
         self._task: asyncio.Task | None = None
         self._next_try = 0.0
         self.released = False  # let go while idle; re-armed when the bike goes quiet
+        self.want_resistance: int | None = None  # level 1-16, sent on the next poll cycle
         self._connected_at = 0.0
 
     @property
@@ -106,9 +107,14 @@ class Bike:
                     # Clock-based, not tick-counted: each acked write takes ~150 ms at the
                     # bike's -88 dBm, which stretched a 5-tick "second" to ~1.75 s.
                     started = time.monotonic()
-                    await client.write_gatt_char(
-                        protocol.WRITE_UUID, protocol.POLL[tick % len(protocol.POLL)], response=True
-                    )
+                    poll = tick % len(protocol.POLL)
+                    await client.write_gatt_char(protocol.WRITE_UUID, protocol.POLL[poll], response=True)
+                    if poll == protocol.RESISTANCE_AFTER_POLL and self.want_resistance:
+                        level, self.want_resistance = self.want_resistance, None
+                        _LOGGER.info("Setting resistance to %d", level)
+                        await client.write_gatt_char(
+                            protocol.WRITE_UUID, protocol.SET_RESISTANCE[level - 1], response=True
+                        )
                     tick += 1
                     if started >= next_second:
                         next_second += 1

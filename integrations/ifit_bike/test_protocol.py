@@ -26,7 +26,10 @@ assert p.parse(bytes.fromhex("00120104021d071d8102530103000000000000 0fbc".repla
 # steady-state frame from the live capture: 262 W, 59 rpm, resistance 11
 assert p.parse(bytes.fromhex("0012010402320732 0202da1a0601af3400003b00".replace(" ", "")), 0.33) == {
     "power": 262, "cadence": 59, "speed": 19.47, "resistance": 11}
-assert all(len(f) in (4, 20) for f in p.INIT + p.POLL)
+assert all(len(f) in (4, 20) for f in p.INIT + p.POLL + p.SET_RESISTANCE)
+# Set and read use one scale: each command's level byte decodes back to its own level.
+assert [p.RESISTANCE[f[12]] for f in p.SET_RESISTANCE] == list(range(1, 17))
+assert p.POLL[p.RESISTANCE_AFTER_POLL] == bytes.fromhex("fe020d02")
 
 # 10 min at 200 W, 90 rpm, 30 km/h, 1 Hz
 t0 = 1_762_500_000
