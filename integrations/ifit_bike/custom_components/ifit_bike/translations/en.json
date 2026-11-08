@@ -24,7 +24,8 @@
     "abort": {
       "already_configured": "This bike is already set up.",
       "no_devices_found": "No iFit bike is in range over Bluetooth. Wake the bike's console and try again.",
-      "reconfigure_successful": "Saved."
+      "reconfigure_successful": "Saved.",
+      "use_reconfigure": "Your bike is already set up. To connect Strava, open iFit Bike and choose Reconfigure; for speed settings, choose Configure."
     }
   },
   "options": {

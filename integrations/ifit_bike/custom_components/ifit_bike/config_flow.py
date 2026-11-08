@@ -81,7 +81,9 @@ class IfitBikeFlow(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DO
             and info.address.upper() not in configured
         }
         if not bikes:
-            return self.async_abort(reason="no_devices_found")
+            # Add integration always looks for a new bike first; with one already set up that
+            # read as "not in range" when the user only wanted Strava (2026-11-07).
+            return self.async_abort(reason="use_reconfigure" if configured else "no_devices_found")
         return self.async_show_form(
             step_id="user", data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(bikes)})
         )

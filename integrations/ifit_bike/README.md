@@ -46,6 +46,8 @@ Dashboard (optional): `TOKEN=<HA long-lived token> python3 dashboard.py ws://<ha
    Ignore the access/refresh tokens on that page (read-only scope).
 2. Choose **Connect Strava** in setup or Reconfigure. The first time, HA asks for the app's Client
    ID and Secret (stored in Settings > Application credentials), then sends you to Strava to approve.
+   If approving lands on an unreachable `http://<ip>:8123/auth/external/callback...` page, set
+   your Home Assistant URL at https://my.home-assistant.io to one this browser can reach.
 3. A ride that couldn't upload stays in `/config/ifit_rides/`; retry with `ifit_bike.upload_ride`.
 
 Rides reach Apple Health only through Strava's own "Send to Health" (Strava app > Settings >
