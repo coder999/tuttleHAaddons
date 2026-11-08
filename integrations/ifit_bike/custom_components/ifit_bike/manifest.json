@@ -1,7 +1,9 @@
 {
   "domain": "ifit_bike",
   "name": "iFit Bike",
-  "bluetooth": [{ "local_name": "I_EB*", "connectable": true }],
+  "bluetooth": [
+    { "service_uuid": "00001533-1412-efde-1523-785feabcd123", "connectable": true }
+  ],
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["application_credentials", "bluetooth_adapters"],

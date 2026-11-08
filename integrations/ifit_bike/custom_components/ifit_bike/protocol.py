@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 
+SERVICE_UUID = "00001533-1412-efde-1523-785feabcd123"
 WRITE_UUID = "00001534-1412-efde-1523-785feabcd123"
 NOTIFY_UUID = "00001535-1412-efde-1523-785feabcd123"
 

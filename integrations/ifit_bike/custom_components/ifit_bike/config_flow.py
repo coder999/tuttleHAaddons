@@ -26,9 +26,12 @@ from homeassistant.helpers.selector import (
     NumberSelectorMode,
 )
 
+from . import protocol
 from .const import DEFAULT_WHEEL_RATIO, DOMAIN, WHEEL_RATIO
 
-BIKE_NAME_PREFIX = "I_EB"  # iFit bikes; I_TL/I_IT are treadmills (different protocol)
+# Match iFit's service, not the name: the name (I_EB...) rides in the scan response, which HA
+# doesn't always get (seen 2026-11-07: same bike listed only by its address).
+NOT_A_BIKE = ("I_TL", "I_IT")  # iFit treadmills: same service, different protocol
 
 
 class IfitBikeFlow(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN):
@@ -73,7 +76,8 @@ class IfitBikeFlow(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DO
         bikes = {
             info.address.upper(): f"{info.name} ({info.address})"
             for info in bluetooth.async_discovered_service_info(self.hass, connectable=True)
-            if (info.name or "").startswith(BIKE_NAME_PREFIX)
+            if protocol.SERVICE_UUID in info.service_uuids
+            and not (info.name or "").startswith(NOT_A_BIKE)
             and info.address.upper() not in configured
         }
         if not bikes:

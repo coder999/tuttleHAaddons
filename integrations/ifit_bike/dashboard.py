@@ -2,6 +2,8 @@
 
 Usage: TOKEN=... python3 dashboard.py ws://<ha-host>:8123/api/websocket
 Idempotent: re-running overwrites the dashboard config with the one below.
+Entity ids below are placeholders (sensor.bike_<key>); the real ids are looked up in the
+entity registry by unique id, since HA prefixes the area (e.g. sensor.basement_bike_power).
 """
 
 import asyncio
@@ -80,6 +82,20 @@ async def main():
                 if r.get("id") == n:
                     return r
 
+        # unique_id is "<bike address>_<key>"; the address has no underscores.
+        real = {
+            f'{e["entity_id"].split(".")[0]}.bike_{e["unique_id"].split("_", 1)[1]}': e["entity_id"]
+            for e in (await call(type="config/entity_registry/list"))["result"]
+            if e["platform"] == "ifit_bike"
+        }
+        assert real, "no ifit_bike entities: set the bike up first"
+
+        def resolve(obj):
+            text = json.dumps(obj)
+            for placeholder, entity_id in real.items():
+                text = text.replace(f'"{placeholder}"', f'"{entity_id}"')
+            return json.loads(text)
+
         dashboards = (await call(type="lovelace/dashboards/list"))["result"]
         if not any(d["url_path"] == "dashboard-bike" for d in dashboards):
             r = await call(type="lovelace/dashboards/create", url_path="dashboard-bike",
@@ -88,10 +104,10 @@ async def main():
             assert r["success"], r
             print("created dashboard /dashboard-bike")
         r = await call(type="lovelace/config/save", url_path="dashboard-bike",
-                       config={"title": "Bike", "views": [VIEW]})
+                       config={"title": "Bike", "views": [resolve(VIEW)]})
         assert r["success"], r
         print("saved dashboard config")
-        for entity_id, options in DISPLAY.items():
+        for entity_id, options in resolve(DISPLAY).items():
             r = await call(type="config/entity_registry/update", entity_id=entity_id,
                            options_domain="sensor", options=options)
             assert r["success"], r

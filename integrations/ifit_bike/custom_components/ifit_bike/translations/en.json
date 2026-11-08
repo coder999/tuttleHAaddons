@@ -23,7 +23,7 @@
     },
     "abort": {
       "already_configured": "This bike is already set up.",
-      "no_devices_found": "No iFit bike (Bluetooth name I_EB...) is in range. Wake the bike's console and try again.",
+      "no_devices_found": "No iFit bike is in range over Bluetooth. Wake the bike's console and try again.",
       "reconfigure_successful": "Saved."
     }
   },
