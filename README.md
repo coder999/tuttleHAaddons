@@ -14,7 +14,7 @@ These add-ons are intended for users who want to install third-party Home Assist
 
 Not add-ons: the add-on store skips these folders. Each has its own install steps.
 
-- [iFit Bike](integrations/ifit_bike/README.md) - ProForm/iFit exercise bike over Bluetooth: live sensors, rides saved as TCX and uploaded to Strava
+- [iFit Bike](integrations/ifit_bike/README.md) - ProForm/iFit exercise bike over Bluetooth: live sensors, resistance control, rides saved as TCX and uploaded to Strava
 
 ## Installing This Repository in Home Assistant
 

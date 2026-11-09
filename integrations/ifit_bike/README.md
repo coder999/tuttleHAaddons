@@ -9,7 +9,9 @@ a TCX file and uploads it to Strava. Built for a ProForm Sport CX (PFEX33921.0),
 as `I_EB` and speaks iFit's proprietary protocol, not FTMS.
 
 - Live sensors: `sensor.bike_power`, `_cadence`, `_speed`, `_resistance`, `_ride_time`,
-  `_ride_distance`, `_status`. The bike sends one data frame per 7-message poll cycle
+  `_ride_distance`, `_status` (entity ids gain the device's area prefix, e.g. `basement_`).
+- `number.bike_resistance_level` (1-16) sets the console's resistance; the dashboard has +/-
+  buttons for it. Works on the Sport CX (verified 2026-11-08: levels 4, 10, 11 set from HA). The bike sends one data frame per 7-message poll cycle
   (~1.4 s at the 200 ms poll; measured 2026-11-07 on the Sport CX), so values move about that often.
 - `switch.bike_connection`: off releases the bike so the iFit app can connect (the bike accepts
   one BLE connection at a time). Pressing the bike's own disconnect only drops HA for ~60 s.
@@ -21,8 +23,11 @@ as `I_EB` and speaks iFit's proprietary protocol, not FTMS.
 - `dashboard.py` creates a "Bike" dashboard (`/dashboard-bike`) with gauges and graphs.
 
 Protocol frames are QZ's default `proformbike` profile; see the header of `protocol.py`. Other
-iFit bikes may need a different QZ profile. Speed and distance are QZ's estimate
-(`wheel_ratio` x cadence); the bike reports neither. Tune `wheel_ratio` against the console.
+iFit bikes may need a different QZ profile. Ride distance is the console's own
+odometer (data-frame bytes 14-15, meters; not in QZ), so it matches the console: checked live
+2026-11-07 (8.37 mi) and 2026-11-08 (3.52 mi vs the console's ~3.3-3.5 mi readout). A ride stays
+open across a Bluetooth dropout and the odometer covers the gap. Speed is still QZ's estimate
+(`wheel_ratio` x cadence); the bike reports none. Tune `wheel_ratio` against the console.
 
 ## Install
 
