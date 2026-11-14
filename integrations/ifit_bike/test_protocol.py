@@ -33,6 +33,10 @@ assert all(len(f) in (4, 20) for f in p.INIT + p.POLL + p.SET_RESISTANCE)
 assert [p.RESISTANCE[f[12]] for f in p.SET_RESISTANCE] == list(range(1, 17))
 assert p.POLL[p.RESISTANCE_AFTER_POLL] == bytes.fromhex("fe020d02")
 
+# follow-up packet captured live 2026-11-07, ~41 min into a ride: timer 0x0a1f = 2591 s
+assert p.parse_elapsed(bytes.fromhex("0112000000011f0a0000021f0a28071f0a0000d1")) == 2591
+assert p.parse_elapsed(frame()) is None  # a data frame is not the timer packet
+
 assert p.odometer_step(5664, 5672) == 8
 assert p.odometer_step(5672, 5672) == 0
 assert p.odometer_step(5672, 40) == 40  # console restarted its count

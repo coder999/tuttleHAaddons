@@ -32,7 +32,12 @@ SIGNAL = f"{DOMAIN}_update"
 PLATFORMS = ["number", "sensor", "switch"]
 RIDE_END_IDLE = 120  # s with no pedaling ends a ride
 MIN_RIDE = 60  # s; shorter rides are dropped
-RETRY_AFTER_FAIL = 60  # s, after a failed connect; a drop mid-session retries on the next tick
+RETRY_AFTER_FAIL = 15  # s, after a failed connect; a drop mid-session retries on the next tick
+# A ride whose console workout began less than this long ago is anchored to the console's start
+# (its timer and odometer count from 0), so a late connect loses nothing. Older than this, the
+# console session may hold an earlier ride, so count from now. ponytail: a guess; the console's
+# own reset rule between back-to-back rides is unknown.
+ANCHOR_WITHIN = 600  # s
 # Let go of an idle bike so the console can sleep (it's battery powered). Re-arm only after the
 # bike stops advertising (console asleep): while it's awake it keeps advertising, and the
 # 10 s connect timer would grab it straight back. ponytail: a ride started within the
@@ -52,7 +57,10 @@ class Bike:
         self.rides_dir = Path(hass.config.path("ifit_rides"))
         self.enabled = True  # the switch entity restores the real value at startup
         self.status = "disconnected"
-        self.data: dict = dict.fromkeys(("power", "cadence", "speed", "resistance", "odometer"))
+        self.data: dict = dict.fromkeys(
+            ("power", "cadence", "speed", "resistance", "odometer", "elapsed")
+        )
+        self._after_data = False  # the next 01 12 packet belongs to the data frame just seen
         self.ride: list[tuple[float, int, int, float, float]] = []
         self.ride_distance = 0.0  # m, from the console's odometer
         self._last_odometer: int | None = None  # kept across dropouts: the gap's distance counts
@@ -144,8 +152,13 @@ class Bike:
 
     def _on_frame(self, _char, frame: bytearray) -> None:
         _LOGGER.debug("<< %s", frame.hex(" "))
-        if (parsed := protocol.parse(bytes(frame), self.wheel_ratio)) is not None:
+        frame = bytes(frame)
+        if (parsed := protocol.parse(frame, self.wheel_ratio)) is not None:
             self.data.update(parsed)
+            self._after_data = True
+        elif self._after_data and (elapsed := protocol.parse_elapsed(frame)) is not None:
+            self.data["elapsed"] = elapsed
+            self._after_data = False
 
     def _second(self) -> None:
         """1 Hz: sample the ride, end it after RIDE_END_IDLE idle, refresh the sensors."""
@@ -160,6 +173,12 @@ class Bike:
             self.released = True  # the poll loop exits and disconnects
         elif self.ride or cadence > 0:
             odometer = self.data["odometer"]
+            elapsed = self.data["elapsed"]
+            if not self.ride and odometer is not None and elapsed is not None and elapsed < ANCHOR_WITHIN:
+                # HA joined a console workout already under way: start the ride where the
+                # console did, at distance 0, so time and distance match the console.
+                self.ride.append((now - elapsed, 0, 0, 0.0, 0.0))
+                self.ride_distance = float(odometer)
             if self.ride and odometer is not None and self._last_odometer is not None:
                 self.ride_distance += protocol.odometer_step(self._last_odometer, odometer)
             speed = self.data["speed"] or 0.0

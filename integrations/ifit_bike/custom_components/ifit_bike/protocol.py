@@ -97,6 +97,17 @@ def parse(frame: bytes, wheel_ratio: float) -> dict | None:
     return out
 
 
+def parse_elapsed(frame: bytes) -> int | None:
+    """The packet right after each data frame (01 12 ...) -> the console's workout timer, s.
+
+    Not in QZ; matched the console live 2026-11-14 (200 s = its 3:20). Only meaningful for
+    the 01 12 packet that follows a data frame; the caller pairs them.
+    """
+    if len(frame) != 20 or frame[:2] != b"\x01\x12":
+        return None
+    return frame[6] | frame[7] << 8
+
+
 def odometer_step(last: int, now: int) -> int:
     """Meters ridden between two odometer readings. A drop means the console restarted its
     count (new workout), so count from 0. ponytail: a true uint16 wrap (40.7 mi into one
