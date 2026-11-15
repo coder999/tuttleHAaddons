@@ -8,12 +8,14 @@ from . import SIGNAL
 from .const import device_info
 
 MEAS = SensorStateClass.MEASUREMENT
+# Power, cadence and speed read 0 when the bike is off (true: nobody is pedaling), not
+# "unknown", which gauge cards can't draw.
 # key, name, device class, unit, state class, icon, value getter
 SENSORS = [
-    ("power", "Power", SensorDeviceClass.POWER, UnitOfPower.WATT, MEAS, None, lambda b: b.data["power"]),
-    ("cadence", "Cadence", None, "rpm", MEAS, "mdi:rotate-right", lambda b: b.data["cadence"]),
+    ("power", "Power", SensorDeviceClass.POWER, UnitOfPower.WATT, MEAS, None, lambda b: b.data["power"] or 0),
+    ("cadence", "Cadence", None, "rpm", MEAS, "mdi:rotate-right", lambda b: b.data["cadence"] or 0),
     ("speed", "Speed", SensorDeviceClass.SPEED, UnitOfSpeed.KILOMETERS_PER_HOUR, MEAS, None,
-     lambda b: b.data["speed"]),
+     lambda b: b.data["speed"] or 0.0),
     ("resistance", "Resistance", None, None, MEAS, "mdi:gauge", lambda b: b.data["resistance"]),
     ("ride_time", "Ride time", SensorDeviceClass.DURATION, UnitOfTime.SECONDS, None, None,
      lambda b: b.ride_time),

@@ -64,6 +64,7 @@ VIEW = {
 DISPLAY = {
     "sensor.bike_speed": {"display_precision": 1},
     "sensor.bike_ride_distance": {"unit_of_measurement": "mi", "display_precision": 2},
+    "sensor.bike_ride_time": {"unit_of_measurement": "min", "display_precision": 1},
 }
 
 

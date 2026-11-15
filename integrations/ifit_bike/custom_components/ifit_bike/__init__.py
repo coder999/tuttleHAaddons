@@ -84,6 +84,7 @@ class Bike:
         if self.released:
             _LOGGER.info("Bike went quiet: will connect when it wakes")
             self.released = False
+            self.want_resistance = None  # don't apply a stale request on the next wake
             self.status = "disconnected"
             self._push()
 
@@ -146,7 +147,8 @@ class Bike:
             # No _end_ride here: a GATT hiccup mid-ride used to split the ride in two
             # (2026-11-08). maybe_connect ends it if the bike stays gone.
             self._task = None
-            self.data = dict.fromkeys(self.data)
+            # Keep the last resistance level on show while the bike is off; the rest is live-only.
+            self.data = {**dict.fromkeys(self.data), "resistance": self.data["resistance"]}
             self.status = "idle" if self.released else "disconnected"
             self._push()
 

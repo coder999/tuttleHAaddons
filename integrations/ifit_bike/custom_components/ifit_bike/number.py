@@ -1,8 +1,12 @@
-"""Resistance control: set the console's level (1-16) from HA; shows the level the bike reports."""
+"""Resistance control: set the console's level (1-16) from HA; shows the level the bike reports.
+
+Always available: while the bike is off it shows the last level, and a level set then is sent
+when the bike next connects (dropped if the console sleeps first).
+"""
 
 from __future__ import annotations
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.number import NumberMode, RestoreNumber
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from . import SIGNAL, protocol
@@ -13,7 +17,7 @@ async def async_setup_entry(hass, entry, add_entities):
     add_entities([BikeResistance(entry.runtime_data)])
 
 
-class BikeResistance(NumberEntity):
+class BikeResistance(RestoreNumber):
     _attr_should_poll = False
     _attr_has_entity_name = True
     _attr_name = "Resistance level"
@@ -29,10 +33,6 @@ class BikeResistance(NumberEntity):
         self._attr_device_info = device_info(bike.address)
 
     @property
-    def available(self) -> bool:
-        return self._bike.status in ("connected", "riding")
-
-    @property
     def native_value(self):
         return self._bike.data["resistance"]
 
@@ -40,4 +40,8 @@ class BikeResistance(NumberEntity):
         self._bike.want_resistance = int(value)  # the poll loop sends it within ~1.5 s
 
     async def async_added_to_hass(self) -> None:
+        # Survive HA restarts: show the last level until the bike reports one.
+        if self._bike.data["resistance"] is None and (last := await self.async_get_last_number_data()):
+            if last.native_value is not None:
+                self._bike.data["resistance"] = int(last.native_value)
         self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL, self.async_write_ha_state))
