@@ -29,6 +29,20 @@ odometer (data-frame bytes 14-15, meters; not in QZ), so it matches the console:
 open across a Bluetooth dropout and the odometer covers the gap. Speed is still QZ's estimate
 (`wheel_ratio` x cadence); the bike reports none. Tune `wheel_ratio` against the console.
 
+## Bluetooth signal
+
+The bike needs an adapter that can **connect** to it, not just listen, so a listen-only scanner
+(e.g. a Shelly) won't do; an ESPHome `bluetooth_proxy` with `active: true` will. HA routes the
+connection through whichever adapter hears the bike best; nothing in this integration changes.
+
+Measured 2026-11-07..17 on the Sport CX: from the HA host's own adapter, a room away, the bike read
+-82 to -88 dBm and the link threw frequent `GATT Protocol Error: Unlikely Error` drops (three in
+one 7-minute ride). An ESP32-C3 USB stick flashed as an ESPHome Bluetooth Proxy (esphome.io
+Ready-Made Projects, no soldering) next to the bike reads it at -57 dBm, and HA moved the
+connection to it on its own (checked with the `bluetooth/subscribe_connection_allocations`
+websocket command). Rides survive drops either way. Whether the proxy ends the drops is not yet confirmed over a
+full ride (as of 2026-11-18).
+
 ## Install
 
 Copy the integration into HA (for example over the SSH add-on) and restart HA fully; custom code
